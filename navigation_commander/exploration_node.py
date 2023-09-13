@@ -3,6 +3,7 @@ from rclpy.node import Node
 
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.msg import Costmap
+from geometry_msgs.msg import PoseStamped
 
 class ExplorationNode(Node):
     def __init__(self):
@@ -27,6 +28,13 @@ class ExplorationNode(Node):
             10
         )
         self.costmap_subscription # prevent unused variable warning
+
+        # publisher for goal waypoint
+        self.waypoint_publisher = self.create_publisher(
+            PoseStamped,
+            'goal_pose',
+            10
+        )
 
     def global_costmap_callback(self, msg):
         """
