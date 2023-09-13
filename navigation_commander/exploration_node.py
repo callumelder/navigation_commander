@@ -1,34 +1,16 @@
 import rclpy
 from rclpy.node import Node
 
-from sensor_msgs.msg import LaserScan
-from geometry_msgs.msg import Twist
 from nav_msgs.msg import OccupancyGrid
+from nav2_msgs.msg import Costmap
 
 class ExplorationNode(Node):
     def __init__(self):
-        super().__init__('exploration_publisher')
+        super().__init__(node_name='explorer')
 
-        # initialize variables
-        self.ranges = []
+        # initialize variables here
 
-        # publish to cmd_vel to move robot
-        self.publisher_ = self.create_publisher(
-            Twist, 
-            'cmd_vel', 
-            10
-        )
-        
-        # subscribe to scan for lidar
-        self.scan_subscription = self.create_subscription(
-            LaserScan, 
-            'scan', 
-            self.scan_callback, 
-            10
-        )
-        self.scan_subscription # prevent unused variable warning
-
-        # subscribe to map for waypoint config
+        # subscribe to map (unsure if needed)
         self.map_subscription = self.create_subscription(
             OccupancyGrid,
             'map', 
@@ -37,13 +19,49 @@ class ExplorationNode(Node):
         )
         self.map_subscription # prevent unused variable warning
 
-    def scan_callback(self, msg):
-        self.ranges = msg.ranges
+        # subscribe to costmap
+        self.costmap_subscription = self.create_subscription(
+            Costmap,
+            'global_costmap',
+            self.global_costmap_callback,
+            10
+        )
+        self.costmap_subscription # prevent unused variable warning
+
+    def global_costmap_callback(self, msg):
+        """
+        Processes the data received from the cost map
+        """
         return
-        
     
-    def map_callback(self):
+    def map_callback(self, msg):
+        """
+        Processes the data received from the map
+        """
         return
+    
+    def explore_map(self):
+        """
+        Primary function utilizing search algorithm (bfs or dfs)
+        """
+        return
+    
+    def get_frontiers(self):
+        """
+        Adds newly found frontiers to the queue/stack
+        """
+        return
+    
+    def convert_to_waypoint(self):
+        """
+        Converts frontier to waypoint
+        """
+    
+    def send_goal_waypoint(self):
+        """
+        Sends goal waypoint to Nav2
+        """
+
 
 def main(args=None):
     rclpy.init(args=args)
