@@ -52,6 +52,27 @@ class ExplorationNode(Node):
         """
         Primary function utilizing search algorithm (bfs or dfs)
         """
+        frontiers = [self.get_start_position()]
+
+        while len(frontiers) > 0:
+            frontier = frontiers.pop(-1) # dfs
+
+            # get waypoint from frontier
+            waypoint = self.convert_to_waypoint(frontier)
+
+            # move to frontier
+            self.send_goal_waypoint(waypoint)
+            
+            # add newly found frontiers to stack
+            frontiers.extend(self.get_frontiers())
+
+        print("Map complete!")
+        return
+    
+    def get_start_position(self):
+        """
+        gets initials coordinates of robot
+        """
         return
     
     def get_frontiers(self):
@@ -64,6 +85,7 @@ class ExplorationNode(Node):
         """
         Converts frontier to waypoint
         """
+        return
     
     def send_goal_waypoint(self):
         """
