@@ -40,17 +40,18 @@ class ExplorationNode(Node):
         """
         Processes the data received from the cost map
         """
-        return
+        return msg
     
     def map_callback(self, msg):
         """
         Processes the data received from the map
         """
-        return
+        return msg
     
     def explore_map(self):
         """
         Primary function utilizing search algorithm (bfs or dfs)
+        Callum
         """
         frontiers = [self.get_start_position()]
 
@@ -71,25 +72,40 @@ class ExplorationNode(Node):
     
     def get_start_position(self):
         """
-        gets initials coordinates of robot
+        gets initials coordinates of robot relative to the map
+        Jasmine
         """
         return
     
-    def get_frontiers(self):
+    def get_global_frontiers(self):
         """
         Adds newly found frontiers to the queue/stack
+        Returns a list of frontier points
+        Isaac
+        """
+        return
+    
+    def find_centroid(self):
+        """
+        Groups frontier points to frontier area
+        A grid point of frontier tuple
+        Relative to map's origin
+        e.g (x,y)
+        Callum
         """
         return
     
     def convert_to_waypoint(self):
         """
         Converts frontier to waypoint
+        Jasmine
         """
         return
     
-    def send_goal_waypoint(self):
+    def send_goal_waypoint(self, waypoint):
         """
         Sends goal waypoint to Nav2
+        Chen
         """
 
 
