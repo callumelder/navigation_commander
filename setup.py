@@ -20,6 +20,7 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
+            'exploration = navigation_commander.exploration_node:main',
         ],
     },
 )
