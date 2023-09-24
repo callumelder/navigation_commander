@@ -208,10 +208,8 @@ class MinimalSubscriber(Node):
         if (number_of_frontier_points == 0):
             print("No more frontier points")
         else:
-            cx = mx / number_of_frontier_points
-            cy = my / number_of_frontier_points
-            print("Centroid = {}, {}".format(cx, cy))
-
+            max_position = self.find_highest_frontier_density(frontier_map, kernel=3)
+        print(max_position)
 
 
         #ax = fig.add_subplot(111, projection='3d')
@@ -220,7 +218,7 @@ class MinimalSubscriber(Node):
         ax.contour(x_2D, y_2D, frontier_map, 10, colors=['red'])
         # plot the centroid
         if (number_of_frontier_points > 0):
-            ax.plot(cx, cy, 0, marker = 'o')
+            ax.plot(max_position[0]/100, max_position[1]/100, 0, marker = 'o')
         # Contour the cost map with a single black line
 
 
@@ -236,11 +234,34 @@ class MinimalSubscriber(Node):
         # message_to_publish.info = msg.info
         # message_to_publish.data = msg.data
 
+    def find_highest_frontier_density(self, frontier_map, kernel=3):
+        """
+        Groups frontier points to frontier area
+        A grid point of frontier tuple
+        Relative to map's origin
+        e.g (x,y)
+        Callum
+        """
+        max_density = 0
+        max_position = None
+        rows = len(frontier_map[0])
+        cols = len(frontier_map[1])
+
+        for row in range(rows):
+            for col in range(cols):
+                sub_map = frontier_map[row:row+kernel, col:col+kernel]
+                density = np.sum(sub_map)
+                if density > max_density:
+                    max_density = density
+                    max_position = (row, col)
+
+        return max_position
+
     def timer_callback(self):
         print("publisher callback")
         # Could check to make sure message_to_publish has something useful
         # but I'm not yet.
-        self.message_to_publish.data[0] = 101
+        # self.message_to_publish.data[0] = 101
         msg = self.message_to_publish
         #self.publisher_.publish(msg)
         self.get_logger().info('Publishing custom data')
