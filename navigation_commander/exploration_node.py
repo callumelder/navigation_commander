@@ -5,6 +5,9 @@ from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.msg import Costmap
 from geometry_msgs.msg import PoseStamped
 
+import numpy as np
+
+
 class ExplorationNode(Node):
     def __init__(self):
         super().__init__(node_name='explorer')
@@ -85,7 +88,7 @@ class ExplorationNode(Node):
         """
         return
     
-    def find_centroid(self):
+    def find_highest_frontier_density(self, frontier_map, kernel=3):
         """
         Groups frontier points to frontier area
         A grid point of frontier tuple
@@ -93,7 +96,21 @@ class ExplorationNode(Node):
         e.g (x,y)
         Callum
         """
-        return
+        max_density = 0
+        max_position = None
+        rows = len(frontier_map[0])
+        cols = len(frontier_map[1])
+
+        for row in range(rows):
+            for col in range(cols):
+                sub_map = frontier_map[row:row+kernel, col:col+kernel]
+                density = np.sum(sub_map)
+                if density > max_density:
+                    max_density = density
+                    max_position = (row, col)
+
+        return max_position
+
     
     def convert_to_waypoint(self):
         """
