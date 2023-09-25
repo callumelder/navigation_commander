@@ -3,7 +3,7 @@ from rclpy.node import Node
 
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.msg import Costmap
-from geometry_msgs.msg import PoseStamped
+from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
 
 import numpy as np
 
