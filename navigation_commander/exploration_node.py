@@ -1,4 +1,5 @@
 import rclpy
+import time
 from rclpy.node import Node
 
 from nav_msgs.msg import OccupancyGrid
@@ -38,6 +39,11 @@ class ExplorationNode(Node):
             'goal_pose',
             10
         )
+        self.initial_pose_pub = self.create_publisher(
+           PoseWithCovarianceStamped,
+           'initialpose',
+           10 
+        )
 
     def global_costmap_callback(self, msg):
         """
@@ -73,12 +79,27 @@ class ExplorationNode(Node):
         print("Map complete!")
         return
     
-    def get_start_position(self):
+    """
+    The get initial pose i had to write a bit more because
+    otherwise it would just get the current pose of the bot
+    every time you run the get_start_pos function. I think to
+    access the intial pose you have to use self.init_pose
+    """
+    def publishInitialPose(self):
+        self.initial_pose_pub.publish(self.init_pose)
+
+    def get_start_position(self,pose):
         """
         gets initials coordinates of robot relative to the map
         Jasmine
         """
-        return
+        self.init_pose = PoseWithCovarianceStamped()
+        self.init_pose.pose.pose.position.x = pose[0]
+        self.init_pose.pose.pose.position.y = pose[1]
+        self.init_pose.header.frame_id = 'map'
+        self.currentPose = self.init_pose.pose.pose
+        self.publishInitialPose()
+        time.sleep(5)   
     
     def get_global_frontiers(self):
         """
@@ -112,12 +133,18 @@ class ExplorationNode(Node):
         return max_position
 
     
-    def convert_to_waypoint(self):
+    def convert_to_waypoint(self, inspection_point):
         """
         Converts frontier to waypoint
         Jasmine
+        input: tuple of (x,y)
+        output: gives a target goal for the bot to reach
         """
-        return
+        inspection_pose = PoseStamped()
+        inspection_pose.header.frame_id = 'map'
+        inspection_pose.pose.postion.x = inspection_point[0]
+        inspection_pose.pose.position.y = inspection_point[1]
+        return inspection_pose
     
     def send_goal_waypoint(self, waypoint):
         """
