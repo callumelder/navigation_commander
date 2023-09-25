@@ -214,8 +214,8 @@ class MinimalSubscriber(Node):
 
         #ax = fig.add_subplot(111, projection='3d')
         ax = fig.add_subplot(111)
-        ax.contour(x_2D, y_2D, grid_data_2D-200, 10)
-        ax.contour(x_2D, y_2D, frontier_map, 10, colors=['red'])
+        ax.contour(y_2D, x_2D, grid_data_2D-200, 10)
+        ax.contour(y_2D, x_2D, frontier_map, 10, colors=['red'])
         # plot the centroid
         if (number_of_frontier_points > 0):
             ax.plot(max_position[0]/100, max_position[1]/100, 0, marker = 'o')
