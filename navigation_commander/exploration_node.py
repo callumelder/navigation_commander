@@ -5,6 +5,9 @@ from rclpy.node import Node
 from nav_msgs.msg import OccupancyGrid
 from nav2_msgs.msg import Costmap
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from nav2_msgs.action import NavigateToPose
+from rclpy.action import ActionClient
+
 
 import numpy as np
 
@@ -142,7 +145,7 @@ class ExplorationNode(Node):
         """
         inspection_pose = PoseStamped()
         inspection_pose.header.frame_id = 'map'
-        inspection_pose.pose.postion.x = inspection_point[0]
+        inspection_pose.pose.position.x = inspection_point[0]
         inspection_pose.pose.position.y = inspection_point[1]
         return inspection_pose
     
@@ -151,6 +154,15 @@ class ExplorationNode(Node):
         Sends goal waypoint to Nav2
         Chen
         """
+        while not self._action_client.wait_for_server(timeout_sec=1.0):
+            self.get_logger().info('Action server not available, waiting...')
+
+        # Create a goal message
+        goal_msg = NavigateToPose.Goal()
+        goal_msg.pose = waypoint
+
+        # Send the goal to Nav2 via the action client
+        self._action_client.send_goal_async(goal_msg)
 
 
 def main(args=None):
