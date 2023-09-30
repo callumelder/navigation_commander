@@ -4,8 +4,8 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 
 from nav_msgs.msg import OccupancyGrid
-from nav2_msgs.msg import Costmap
 from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from nav2_msgs.msg import BehaviorTreeLog
 
 import numpy as np
 import threading
@@ -31,14 +31,8 @@ class ExplorationNode(Node):
 
         self.init_position = (0, 0)
 
-        # # subscribe to map (unsure if needed)
-        # self.map_subscription = self.create_subscription(
-        #     OccupancyGrid,
-        #     'map', 
-        #     self.map_callback,
-        #     10 
-        # )
-        # self.map_subscription # prevent unused variable warning
+        self.node_name = None
+        self.current_status = None
 
         # subscribe to costmap
         self.costmap_subscription = self.create_subscription(
@@ -49,6 +43,13 @@ class ExplorationNode(Node):
             10
         )
         self.costmap_subscription # prevent unused variable warning
+
+        self.btl_subscription = self.create_subscription(
+            BehaviorTreeLog,
+            'behavior_tree_log',
+            self.bt_log_callback,
+            10)
+        self.btl_subscription # prevent unused variable warning
 
         # publisher for goal waypoint
         self.waypoint_publisher = self.create_publisher(
@@ -62,6 +63,7 @@ class ExplorationNode(Node):
            'initialpose',
            10 
         )
+
 
     def global_costmap_callback(self, msg):
         """
@@ -80,14 +82,12 @@ class ExplorationNode(Node):
         # Convert this into a grid
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
 
-        # self.frontier_map = self.get_frontiers()
-        
-    
-    # def map_callback(self, msg):
-    #     """
-    #     Processes the data received from the map
-    #     """
-    #     return msg
+
+    def bt_log_callback(self, msg:BehaviorTreeLog):
+        latest_event = msg.event_log.pop()
+        self.node_name = latest_event.node_name
+        self.current_status = latest_event.current_status
+
     
     def explore_map(self):
         """
@@ -102,6 +102,7 @@ class ExplorationNode(Node):
             self.frontier_map = self.get_frontiers()
             frontier_coord = frontier_coords.pop()
             frontier_coords.clear()
+            frontier_coord_transformed = self.transform_coordinate_frame(frontier_coord)
 
             # skips first waypoint
             if frontier_coord == self.get_initial_position():
@@ -109,20 +110,27 @@ class ExplorationNode(Node):
                 frontier_coords.append(self.find_highest_frontier_density(self.frontier_map))
                 continue
 
+            coord_transformed_metres = self.pixels_to_meters(frontier_coord_transformed)
+
             # get waypoint from frontier
-            waypoint = self.convert_to_waypoint(frontier_coord)
+            waypoint = self.convert_to_waypoint(coord_transformed_metres)
 
             # move to frontier
             self.send_goal_waypoint(waypoint)
             
             frontier_coords.append(self.find_highest_frontier_density(self.frontier_map))
 
-        print("Map complete!")
+        self.get_logger().info('Map complete!')
         return
     
+
     def get_initial_position(self):
+        """
+        Returns initial position (0, 0)
+        """
         return self.init_position
     
+
     def publishInitialPose(self):
         """
         The get initial pose i had to write a bit more because
@@ -131,6 +139,7 @@ class ExplorationNode(Node):
         access the intial pose you have to use self.init_pose
         """
         self.initial_pose_pub.publish(self.init_pose)
+
 
     def get_start_position(self,pose):
         """
@@ -145,6 +154,7 @@ class ExplorationNode(Node):
         self.publishInitialPose()
         time.sleep(5)   
     
+
     def get_frontiers(self):
         """
         Adds newly found frontiers to the queue/stack
@@ -173,8 +183,6 @@ class ExplorationNode(Node):
                             neighbour_values.append(self.grid_data_2D[x+1][y])
                             neighbour_values.append(self.grid_data_2D[x][y+1])
                             neighbour_values.append(self.grid_data_2D[x+1][y+1])
-                            # print("This value: {}".format(this_value))
-                            # print("Left corner neighbours: {}".format(neighbour_values))
                         elif (y == self.width-1):
                             # bottom right corner:
                             neighbour_values.append(self.grid_data_2D[x+1][y])
@@ -234,13 +242,13 @@ class ExplorationNode(Node):
                     # Check neighbours
                     is_frontier =  self.IS_UNKNOWN_VALUE in neighbour_values
                     if is_frontier:
-                        #print("Found one")
                         frontier_map[x][y] = self.IS_FRONTIER_VALUE
                         mx = mx + self.x_2D[x][y]
                         my = my + self.y_2D[x][y]
                         number_of_frontier_points = number_of_frontier_points + 1
         return frontier_map
     
+
     def find_highest_frontier_density(self, frontier_map, kernel=3):
         """
         Finds coordinates of an area of size kernel that contains the most frontiers
@@ -263,10 +271,9 @@ class ExplorationNode(Node):
                     max_density = density
                     max_position = (row, col)
 
-        print(self.pixels_to_meters(max_position))
-
-        return self.pixels_to_meters(max_position)
+        return max_position
     
+
     def pixels_to_meters(self, coordinates, resolution=0.05):
         """
         Converts coordinates of waypoint from pixels to meters
@@ -276,6 +283,15 @@ class ExplorationNode(Node):
         x_meters = x*resolution
         y_meters = y*resolution
         return (x_meters, y_meters)
+    
+    def transform_coordinate_frame(self, coordinates):
+        """
+        Transforms coordinates top left coordinate frame to centre map coordinate frame
+        """
+        x, y = coordinates
+        tranformed_x = x - (self.width / 2)
+        transformed_y = (self.height / 2) - y
+        return (tranformed_x, transformed_y)
 
     
     def convert_to_waypoint(self, inspection_point):
@@ -292,11 +308,15 @@ class ExplorationNode(Node):
         inspection_pose.pose.position.y = float(inspection_point[1])
         return inspection_pose
     
+    
     def send_goal_waypoint(self, waypoint):
         """
         Sends goal waypoint to Nav2
         Chen
         """
+        while self.node_name == 'ComputePathToPose' and self.current_status == 'RUNNING':
+            self.get_logger.info('Waiting for goal to finish...')
+            time.sleep(3)
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
 
