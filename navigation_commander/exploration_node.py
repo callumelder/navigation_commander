@@ -10,6 +10,12 @@ from nav2_msgs.msg import BehaviorTreeLog
 import numpy as np
 import threading
 
+import matplotlib.pyplot as plt
+
+# Create a global fig (for testing)
+DEBUG_WITH_GRAPH=False
+if (DEBUG_WITH_GRAPH):
+    fig = plt.figure()
 
 class ExplorationNode(Node):
     def __init__(self):
@@ -24,6 +30,8 @@ class ExplorationNode(Node):
         self.height = 0
         self.x_2D = 0
         self.y_2D = 0
+
+        self.origin = [0, 0]
 
         self.grid_data_1D = None
         self.grid_data_2D = None
@@ -73,10 +81,22 @@ class ExplorationNode(Node):
         self.width = msg.info.width
         self.height = msg.info.height
 
+        # Grab the origin from the costmap
+        origin = msg.info.origin
+        self.origin[0] = origin.position.x
+        self.origin[1] = origin.position.y
+
         self.grid_data_1D = list(msg.data)
 
         x = np.linspace(0, 1, self.width)
         y = np.linspace(0, 1, self.height)
+
+        # Update costmap coordinates using the origin information
+        WIDTH = abs(2.0*self.origin[0])
+        HEIGHT = abs(2.0*self.origin[1])
+        x = (x)*WIDTH + self.origin[0]
+        y = (y)*HEIGHT + self.origin[1]
+
         self.x_2D, self.y_2D = np.meshgrid(x,y)
 
         # Convert this into a grid
@@ -98,7 +118,13 @@ class ExplorationNode(Node):
         Primary function utilizing search algorithm (bfs or dfs)
         Written by Callum
         """
-        frontier_coords = [self.get_initial_position()]
+
+        # Make sure we have costmap information before proceeding
+        while (self.grid_data_1D == None):
+            print("Polling for costmap information from subscribed lister..")
+            time.sleep(1)
+
+        frontier_coords = [self.get_initial_position()] # x, y in m
         self.frontier_map = self.get_frontiers()
 
         while len(frontier_coords) > 0:
@@ -106,23 +132,46 @@ class ExplorationNode(Node):
             self.frontier_map = self.get_frontiers()
             frontier_coord = frontier_coords.pop()
             frontier_coords.clear()
-            frontier_coord_transformed = self.transform_coordinate_frame(frontier_coord)
+
+            if (DEBUG_WITH_GRAPH):
+                try:
+                    # Draw the frontier map and grid data; after rotating to have the view match
+                    ax = fig.add_subplot(111)
+                    ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
+                    ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
+                except:
+                    self.get_logger().warning('Aborting graphing effort.')
 
             # skips first waypoint
             if frontier_coord == self.get_initial_position():
                 self.frontier_map = self.get_frontiers()
-                frontier_coords.append(self.find_highest_frontier_density(self.frontier_map))
+                max_coordinates = self.find_highest_frontier_density(self.frontier_map)
+                if (max_coordinates == None):
+                    self.get_logger().warning('No maximum density found; likely have completed mapping.')
+                    break
+                frontier_coords.append(max_coordinates)
                 continue
 
-            coord_transformed_metres = self.pixels_to_meters(frontier_coord_transformed)
+            waypoint = self.convert_to_waypoint(frontier_coord)
 
-            # get waypoint from frontier
-            waypoint = self.convert_to_waypoint(coord_transformed_metres)
+            if (DEBUG_WITH_GRAPH):
+                try:
+                    # Draw the waypoint on the map; after rotating to have the view match
+                    ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
+                    plt.show(block=False)
+                    plt.pause(1)
+                    fig.clear()
+                except:
+                    self.get_logger().warning('Aborting graphing effort.')
 
             # move to frontier
             self.send_goal_waypoint(waypoint)
-            
-            frontier_coords.append(self.find_highest_frontier_density(self.frontier_map))
+            max_coordinates = self.find_highest_frontier_density(self.frontier_map)
+            if (max_coordinates == None):
+                self.get_logger().warning('No maximum density found; likely have completed mapping.')
+                break
+
+            frontier_coords.append(max_coordinates)
 
         self.get_logger().info('Map complete!')
         return
@@ -267,35 +316,21 @@ class ExplorationNode(Node):
         rows = len(frontier_map[0])
         cols = len(frontier_map[1])
 
+        max_coordinate = None
+
         for row in range(rows):
             for col in range(cols):
                 sub_map = frontier_map[row:row+kernel, col:col+kernel]
                 density = np.sum(sub_map)
                 if density > max_density:
                     max_density = density
-                    max_position = (row, col)
+                    # We need not return max_position if max_location is in the correct coordinate frame
+                    max_coordinate = [self.x_2D[row][col], self.y_2D[row][col]]
 
-        return max_position
-    
+        if (max_coordinate == None):
+            print("Failed to find max_location; has this work been completed?")
 
-    def pixels_to_meters(self, coordinates, resolution=0.05):
-        """
-        Converts coordinates of waypoint from pixels to meters
-        Callum
-        """
-        x, y = coordinates
-        x_meters = x*resolution
-        y_meters = y*resolution
-        return (x_meters, y_meters)
-    
-    def transform_coordinate_frame(self, coordinates):
-        """
-        Transforms coordinates top left coordinate frame to centre map coordinate frame
-        """
-        x, y = coordinates
-        tranformed_x = x - (self.width / 2)
-        transformed_y = (self.height / 2) - y
-        return (tranformed_x, transformed_y)
+        return max_coordinate
 
     
     def convert_to_waypoint(self, inspection_point):
