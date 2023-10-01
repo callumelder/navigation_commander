@@ -31,19 +31,19 @@ class ExplorationNode(Node):
 
         self.init_position = (0, 0)
 
-        self.node_name = None
-        self.current_status = None
+        self.node_name = 'NavigateRecovery'
+        self.current_status = 'IDLE'
 
         # subscribe to costmap
         self.costmap_subscription = self.create_subscription(
             OccupancyGrid,
-            #'/map',
             '/global_costmap/costmap',
             self.global_costmap_callback,
             10
         )
         self.costmap_subscription # prevent unused variable warning
 
+        # subscribe to behaviour tree log
         self.btl_subscription = self.create_subscription(
             BehaviorTreeLog,
             'behavior_tree_log',
@@ -68,7 +68,7 @@ class ExplorationNode(Node):
     def global_costmap_callback(self, msg):
         """
         Processes the data received from the cost map
-        Isaac and Callum
+        Written by Isaac
         """
         self.width = msg.info.width
         self.height = msg.info.height
@@ -84,6 +84,10 @@ class ExplorationNode(Node):
 
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
+        """
+        Process behaviour tree log messag data
+        Written by Callum
+        """
         latest_event = msg.event_log.pop()
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
@@ -92,7 +96,7 @@ class ExplorationNode(Node):
     def explore_map(self):
         """
         Primary function utilizing search algorithm (bfs or dfs)
-        Callum
+        Written by Callum
         """
         frontier_coords = [self.get_initial_position()]
         self.frontier_map = self.get_frontiers()
@@ -126,7 +130,7 @@ class ExplorationNode(Node):
 
     def get_initial_position(self):
         """
-        Returns initial position (0, 0)
+        Returns initial position of robot relative to map
         """
         return self.init_position
     
@@ -159,7 +163,7 @@ class ExplorationNode(Node):
         """
         Adds newly found frontiers to the queue/stack
         Returns a list of frontier points
-        Isaac
+        Written by Isaac
         """
         self.get_logger().info('Getting frontiers...')
         # Now let's generate a frontier map
@@ -312,10 +316,10 @@ class ExplorationNode(Node):
     def send_goal_waypoint(self, waypoint):
         """
         Sends goal waypoint to Nav2
-        Chen
+        Written by Chen and Callum
         """
-        while self.node_name == 'ComputePathToPose' and self.current_status == 'RUNNING':
-            self.get_logger.info('Waiting for goal to finish...')
+        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
+            self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
