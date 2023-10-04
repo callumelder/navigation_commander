@@ -13,7 +13,7 @@ import threading
 import matplotlib.pyplot as plt
 
 # Create a global fig (for testing)
-DEBUG_WITH_GRAPH=False
+DEBUG_WITH_GRAPH=True
 if (DEBUG_WITH_GRAPH):
     fig = plt.figure()
 
@@ -74,6 +74,7 @@ class ExplorationNode(Node):
         """
         self.width = msg.info.width
         self.height = msg.info.height
+        self.resolution = msg.info.resolution
 
         # Grab the origin from the costmap
         origin = msg.info.origin
@@ -86,8 +87,10 @@ class ExplorationNode(Node):
         y = np.linspace(0, 1, self.height)
 
         # Update costmap coordinates using the origin information
-        WIDTH = abs(2.0*self.origin[0])
-        HEIGHT = abs(2.0*self.origin[1])
+        # WIDTH = abs(2.0*self.origin[0])
+        # HEIGHT = abs(2.0*self.origin[1])
+        WIDTH = self.resolution*self.width   # width in meters
+        HEIGHT = self.resolution*self.height
         x = (x)*WIDTH + self.origin[0]
         y = (y)*HEIGHT + self.origin[1]
 
@@ -145,7 +148,7 @@ class ExplorationNode(Node):
                 #     break
                 frontier_coords.append(max_coordinates)
                 continue
-
+            print(frontier_coord)
             waypoint = self.convert_to_waypoint(frontier_coord)
 
             if (DEBUG_WITH_GRAPH):
