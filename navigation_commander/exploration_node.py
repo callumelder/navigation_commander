@@ -4,7 +4,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 
 from nav_msgs.msg import OccupancyGrid
-from geometry_msgs.msg import PoseStamped, PoseWithCovarianceStamped
+from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 
 import numpy as np
@@ -66,12 +66,6 @@ class ExplorationNode(Node):
             10
         )
 
-        self.initial_pose_pub = self.create_publisher(
-           PoseWithCovarianceStamped,
-           'initialpose',
-           10 
-        )
-
 
     def global_costmap_callback(self, msg):
         """
@@ -121,7 +115,7 @@ class ExplorationNode(Node):
 
         # Make sure we have costmap information before proceeding
         while (self.grid_data_1D == None):
-            print("Polling for costmap information from subscribed lister..")
+            self.get_logger().info("Polling for costmap information from subscribed lister..")
             time.sleep(1)
 
         frontier_coords = [self.get_initial_position()] # x, y in m
@@ -140,15 +134,15 @@ class ExplorationNode(Node):
                     ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
                     ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
                 except:
-                    self.get_logger().warning('Aborting graphing effort.')
+                    self.get_logger().warning('Aborting graphing effort...')
 
             # skips first waypoint
             if frontier_coord == self.get_initial_position():
                 self.frontier_map = self.get_frontiers()
                 max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-                if (max_coordinates == None):
-                    self.get_logger().warning('No maximum density found; likely have completed mapping.')
-                    break
+                # if (max_coordinates == None):
+                #     self.get_logger().warning('No maximum density found; likely have completed mapping.')
+                #     break
                 frontier_coords.append(max_coordinates)
                 continue
 
@@ -162,13 +156,13 @@ class ExplorationNode(Node):
                     plt.pause(1)
                     fig.clear()
                 except:
-                    self.get_logger().warning('Aborting graphing effort.')
+                    self.get_logger().warning('Aborting graphing effort...')
 
             # move to frontier
             self.send_goal_waypoint(waypoint)
             max_coordinates = self.find_highest_frontier_density(self.frontier_map)
             if (max_coordinates == None):
-                self.get_logger().warning('No maximum density found; likely have completed mapping.')
+                self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
 
             frontier_coords.append(max_coordinates)
@@ -182,30 +176,6 @@ class ExplorationNode(Node):
         Returns initial position of robot relative to map
         """
         return self.init_position
-    
-
-    def publishInitialPose(self):
-        """
-        The get initial pose i had to write a bit more because
-        otherwise it would just get the current pose of the bot
-        every time you run the get_start_pos function. I think to
-        access the intial pose you have to use self.init_pose
-        """
-        self.initial_pose_pub.publish(self.init_pose)
-
-
-    def get_start_position(self,pose):
-        """
-        gets initials coordinates of robot relative to the map
-        Jasmine
-        """
-        self.init_pose = PoseWithCovarianceStamped()
-        self.init_pose.pose.pose.position.x = pose[0]
-        self.init_pose.pose.pose.position.y = pose[1]
-        self.init_pose.header.frame_id = 'map'
-        self.currentPose = self.init_pose.pose.pose
-        self.publishInitialPose()
-        time.sleep(5)   
     
 
     def get_frontiers(self):
@@ -312,11 +282,9 @@ class ExplorationNode(Node):
             return (0, 0)
         
         max_density = 0
-        max_position = None
+        max_coordinate = None
         rows = len(frontier_map[0])
         cols = len(frontier_map[1])
-
-        max_coordinate = None
 
         for row in range(rows):
             for col in range(cols):
@@ -326,9 +294,6 @@ class ExplorationNode(Node):
                     max_density = density
                     # We need not return max_position if max_location is in the correct coordinate frame
                     max_coordinate = [self.x_2D[row][col], self.y_2D[row][col]]
-
-        if (max_coordinate == None):
-            print("Failed to find max_location; has this work been completed?")
 
         return max_coordinate
 
