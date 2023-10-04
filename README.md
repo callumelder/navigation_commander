@@ -28,3 +28,13 @@ export GAZEBO_MODEL_PATH=~/.gazebo/models:$GAZEBO_MODEL_PATH
 export GAZEBO_MODEL_PATH=$GAZEBO_MODEL_PATH:~/turtlebot3_ws/src/turtlebot3_simulations/turtlebot3_gazebo/models
 export TURTLEBOT3_MODEL=waffle_pi
 ```
+
+## Running our code
+In one terminal run:
+```
+ros2 launch nav2_bringup tb3_simulation_launch.py slam:=True 
+```
+In another terminal run:
+```
+ros2 run navigation_commander exploration
+```
