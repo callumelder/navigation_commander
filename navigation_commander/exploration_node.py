@@ -132,10 +132,12 @@ class ExplorationNode(Node):
         while len(frontier_coords) > 0:
             time.sleep(1)
             self.frontier_map = self.get_frontiers()
-            frontier_coord = frontier_coords.pop()
+            frontier_coord = frontier_coords.pop(0)
             frontier_coords.clear()
 
             self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
+
+            print(f'Current Coordinate: {frontier_coord}')
 
             waypoint = self.convert_to_waypoint(frontier_coord)
 
@@ -144,7 +146,8 @@ class ExplorationNode(Node):
             # move to frontier
             self.send_goal_waypoint(waypoint)
             max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-            if (max_coordinates == None):
+
+            if (len(max_coordinates) == 0):
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
 
@@ -290,19 +293,23 @@ class ExplorationNode(Node):
         coordinate_density_pairs = {}
         rows, cols = len(frontier_map), len(frontier_map[0])
         top_coordinate_num = 3
+        threshold = 0
 
         for row in range(rows):
             for col in range(cols):
                 sub_map = frontier_map[row:row+kernel, col:col+kernel]
                 density = np.sum(sub_map)
-                coordinate = (self.x_2D[row][col], self.y_2D[row][col])
-                coordinate_density_pairs[coordinate] = density
+                if density > threshold:
+                    coordinate = (self.x_2D[row][col], self.y_2D[row][col])
+                    coordinate_density_pairs[coordinate] = density
 
         # sort coordinates based on highest density, adding top 3 to top_coordinates
         sorted_coordinates = sorted(coordinate_density_pairs.items(), key=lambda x: x[1], reverse=True)
         top_coordinates = sorted_coordinates[:top_coordinate_num]
         top_coordinates = [coordinate for coordinate, _ in top_coordinates]
 
+
+        print(f'Top Coordinates: {top_coordinates}')
 
         return top_coordinates
 
