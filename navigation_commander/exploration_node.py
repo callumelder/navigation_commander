@@ -143,12 +143,9 @@ class ExplorationNode(Node):
             if frontier_coord == self.get_initial_position():
                 self.frontier_map = self.get_frontiers()
                 max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-                # if (max_coordinates == None):
-                #     self.get_logger().warning('No maximum density found; likely have completed mapping.')
-                #     break
-                frontier_coords.append(max_coordinates)
+                frontier_coords.extend(max_coordinates)
                 continue
-            print(frontier_coord)
+
             waypoint = self.convert_to_waypoint(frontier_coord)
 
             if (DEBUG_WITH_GRAPH):
@@ -168,7 +165,7 @@ class ExplorationNode(Node):
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
 
-            frontier_coords.append(max_coordinates)
+            frontier_coords.extend(max_coordinates)
 
         self.get_logger().info('Map complete!')
         return
@@ -284,21 +281,24 @@ class ExplorationNode(Node):
         if len(frontier_map) == 0:
             return (0, 0)
         
-        max_density = 0
-        max_coordinate = None
-        rows = len(frontier_map[0])
-        cols = len(frontier_map[1])
+        coordinate_density_pairs = {}
+        rows, cols = len(frontier_map), len(frontier_map[0])
+        top_coordinate_num = 3
 
         for row in range(rows):
             for col in range(cols):
                 sub_map = frontier_map[row:row+kernel, col:col+kernel]
                 density = np.sum(sub_map)
-                if density > max_density:
-                    max_density = density
-                    # We need not return max_position if max_location is in the correct coordinate frame
-                    max_coordinate = [self.x_2D[row][col], self.y_2D[row][col]]
+                coordinate = (self.x_2D[row][col], self.y_2D[row][col])
+                coordinate_density_pairs[coordinate] = density
 
-        return max_coordinate
+        # sort coordinates based on highest density, adding top 3 to top_coordinates
+        sorted_coordinates = sorted(coordinate_density_pairs.items(), key=lambda x: x[1], reverse=True)
+        top_coordinates = sorted_coordinates[:top_coordinate_num]
+        top_coordinates = [coordinate for coordinate, _ in top_coordinates]
+
+
+        return top_coordinates
 
     
     def convert_to_waypoint(self, inspection_point):
