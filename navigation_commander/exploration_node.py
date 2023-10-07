@@ -123,8 +123,11 @@ class ExplorationNode(Node):
             self.get_logger().info("Polling for costmap information from subscribed lister..")
             time.sleep(1)
 
-        frontier_coords = [self.get_initial_position()] # x, y in m
+        # initialize frontier map and coordinates
+        frontier_coords = []
         self.frontier_map = self.get_frontiers()
+        max_coordinates = self.find_highest_frontier_density(self.frontier_map)
+        frontier_coords.extend(max_coordinates)
 
         while len(frontier_coords) > 0:
             time.sleep(1)
@@ -133,13 +136,6 @@ class ExplorationNode(Node):
             frontier_coords.clear()
 
             self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
-
-            # skips first waypoint
-            if frontier_coord == self.get_initial_position():
-                self.frontier_map = self.get_frontiers()
-                max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-                frontier_coords.extend(max_coordinates)
-                continue
 
             waypoint = self.convert_to_waypoint(frontier_coord)
 
@@ -186,13 +182,6 @@ class ExplorationNode(Node):
                     fig.clear()
                 except:
                     self.get_logger().warning('Aborting graphing effort...')
-    
-
-    def get_initial_position(self):
-        """
-        Returns initial position of robot relative to map
-        """
-        return self.init_position
     
 
     def get_frontiers(self):
