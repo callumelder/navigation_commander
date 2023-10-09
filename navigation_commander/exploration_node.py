@@ -4,6 +4,7 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 
 from nav_msgs.msg import OccupancyGrid
+from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 
@@ -65,6 +66,7 @@ class ExplorationNode(Node):
             'goal_pose',
             10
         )
+        
 
 
     def global_costmap_callback(self, msg):
@@ -312,7 +314,14 @@ class ExplorationNode(Node):
         print(f'Top Coordinates: {top_coordinates}')
 
         return top_coordinates
-
+    
+    def calc_dist(self,point1,point2):
+        """
+        calculates euclidean distance between two points represented by tuples in form (x,y)
+        """
+        dx = point1[0] - point2[0]
+        dy = point1[1] - point2[1]
+        return (dx**2+dy**2)**0.5
     
     def convert_to_waypoint(self, inspection_point):
         """
