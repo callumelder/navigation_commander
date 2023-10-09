@@ -2,6 +2,8 @@ import rclpy
 import time
 from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
+from rclpy.qos import QoSProfile
+from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
 
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
@@ -42,6 +44,7 @@ class ExplorationNode(Node):
 
         self.node_name = 'NavigateRecovery'
         self.current_status = 'IDLE'
+        self.currentPose = None
 
         # subscribe to costmap
         self.costmap_subscription = self.create_subscription(
@@ -65,6 +68,20 @@ class ExplorationNode(Node):
             PoseStamped,
             'goal_pose',
             10
+        )
+
+        pose_qos = QoSProfile(
+            durability = QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            reliability = QoSReliabilityPolicy.RELIABLE,
+            history = QoSHistoryPolicy.KEEP_LAST,
+            depth = 1
+        )
+
+        self.model_pose_sub = self.create_subscription(
+            Odometry,
+            '/odom',
+            self.poseCallback,
+            pose_qos
         )
         
 
@@ -112,6 +129,15 @@ class ExplorationNode(Node):
         latest_event = msg.event_log.pop()
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
+
+    def poseCallback(self, msg):
+        """
+        gets current pose of robot - u can compare this to the goal pose u want to send
+        pose is in header_frame_id <- should be 'map' here
+        this is from odometry
+        wiki.ros.org/amcl
+        """
+        self.currentPose = msg.pose.pose
 
     
     def explore_map(self):
