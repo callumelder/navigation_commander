@@ -131,7 +131,7 @@ class ExplorationNode(Node):
         Process behaviour tree log messag data
         Written by Callum
         """
-        latest_event = msg.event_log.pop(0)
+        latest_event = msg.event_log.pop(-1)
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
 
@@ -178,7 +178,7 @@ class ExplorationNode(Node):
 
             self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
 
-            print(f'Current Coordinate: {frontier_coord}')
+            # print(f'Current Coordinate: {frontier_coord}')
 
             waypoint = self.convert_to_waypoint(frontier_coord)
 
@@ -352,13 +352,14 @@ class ExplorationNode(Node):
         top_coordinates = [coordinate for coordinate, _ in top_coordinates]
 
 
-        print(f'Top Coordinates: {top_coordinates}')
+        # print(f'Top Coordinates: {top_coordinates}')
 
         return top_coordinates
     
-    def calc_dist(self,point1,point2):
+    def calc_dist(self, point1, point2):
         """
         calculates euclidean distance between two points represented by tuples in form (x,y)
+        Written by Jasmine
         """
         dx = point1[0] - point2[0]
         dy = point1[1] - point2[1]
@@ -367,7 +368,7 @@ class ExplorationNode(Node):
     def convert_to_waypoint(self, inspection_point):
         """
         Converts frontier to waypoint
-        Jasmine
+        Written by Jasmine
         input: tuple of (x,y)
         output: gives a target goal for the bot to reach
         """
@@ -384,7 +385,13 @@ class ExplorationNode(Node):
         Sends goal waypoint to Nav2
         Written by Chen and Callum
         """
+        # start_time = time.time()
+        # break_time = 20
         while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
+            # elapsed_time = time.time() - start_time
+            # if elapsed_time >= break_time:
+            #     self.get_logger().info('Took too long, breaking...')
+            #     break
             self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
         self.get_logger().info('Sending goal waypoint...')
