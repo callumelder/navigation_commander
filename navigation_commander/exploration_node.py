@@ -29,6 +29,8 @@ class ExplorationNode(Node):
         self.IS_UNKNOWN_VALUE = -1
         self.THRESHHOLD_VALUE = 20
 
+        self.dummy = None
+
         self.width = 0
         self.height = 0
         self.x_2D = 0
@@ -41,6 +43,7 @@ class ExplorationNode(Node):
         self.frontier_map = np.zeros((self.width, self.height))
 
         self.init_position = (0, 0)
+        self.last_coordinate = None
 
         self.node_name = 'NavigateRecovery'
         self.current_status = 'IDLE'
@@ -120,6 +123,8 @@ class ExplorationNode(Node):
         # Convert this into a grid
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
 
+        self.dummy = 1
+
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
@@ -147,9 +152,9 @@ class ExplorationNode(Node):
         """
 
         # Make sure we have costmap information before proceeding
-        while (self.grid_data_1D == None):
+        while (self.dummy == None):
             self.get_logger().info("Polling for costmap information from subscribed lister..")
-            time.sleep(1)
+            time.sleep(3)
 
         # initialize frontier map and coordinates
         frontier_coords = []
@@ -161,6 +166,10 @@ class ExplorationNode(Node):
             time.sleep(1)
             self.frontier_map = self.get_frontiers()
             frontier_coord = frontier_coords.pop(0)
+
+            if self.last_coordinate == frontier_coord:
+                continue
+
             frontier_coords.clear()
 
             self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
@@ -180,6 +189,8 @@ class ExplorationNode(Node):
                 break
 
             frontier_coords.extend(max_coordinates)
+
+            self.last_coordinate = frontier_coord
 
         self.get_logger().info('Map complete!')
         
