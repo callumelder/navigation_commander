@@ -1,0 +1,6 @@
+ros2 run navigation_commander exploration
+[INFO] [1696895936.321327041] [explorer]: Polling for costmap information from subscribed lister..
+[WARN] [1696895936.321998352] [explorer]: New publisher discovered on topic '/odom', offering incompatible QoS. No messages will be received from it. Last incompatible policy: DURABILITY
+[INFO] [1696895937.322178480] [explorer]: Polling for costmap information from subscribed lister..
+[INFO] [1696895938.323778749] [explorer]: Getting frontiers...
+
