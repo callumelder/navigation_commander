@@ -16,7 +16,7 @@ import threading
 import matplotlib.pyplot as plt
 
 # Create a global fig (for testing)
-DEBUG_WITH_GRAPH=True
+DEBUG_WITH_GRAPH=False
 if (DEBUG_WITH_GRAPH):
     fig = plt.figure()
 
@@ -108,7 +108,7 @@ class ExplorationNode(Node):
         x = np.linspace(0, 1, self.width)
         y = np.linspace(0, 1, self.height)
 
-        self.ax = fig.add_subplot(111)
+        # self.ax = fig.add_subplot(111)
 
         # Update costmap coordinates using the origin information
         # WIDTH = abs(2.0*self.origin[0])
@@ -176,13 +176,26 @@ class ExplorationNode(Node):
 
             frontier_coords.clear()
 
-            self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
-
-            # print(f'Current Coordinate: {frontier_coord}')
+            if (DEBUG_WITH_GRAPH):
+                try:
+                    # Draw the frontier map and grid data; after rotating to have the view match
+                    ax = fig.add_subplot(111)
+                    ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
+                    ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
+                except:
+                    self.get_logger().warning('Aborting graphing effort...')
 
             waypoint = self.convert_to_waypoint(frontier_coord)
 
-            self.debug_plot_waypoint(DEBUG_WITH_GRAPH, self.ax, waypoint)
+            if (DEBUG_WITH_GRAPH):
+                try:
+                    # Draw the waypoint on the map; after rotating to have the view match
+                    ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
+                    plt.show(block=False)
+                    plt.pause(1)
+                    fig.clear()
+                except:
+                    self.get_logger().warning('Aborting graphing effort...')
 
             # move to frontier
             self.send_goal_waypoint(waypoint)
@@ -200,34 +213,34 @@ class ExplorationNode(Node):
         
         return
     
-    def debug_plot_map(self, debugger, ax):
-        """
-        Plots frontier map
-        Written by Isaac
-        """
-        if (debugger):
-                try:
-                    # Draw the frontier map and grid data; after rotating to have the view match
-                    ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
-                    ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
-                except:
-                    self.get_logger().warning('Aborting graphing effort...')
+    # def debug_plot_map(self, debugger, ax):
+    #     """
+    #     Plots frontier map
+    #     Written by Isaac
+    #     """
+    #     if (debugger):
+    #             try:
+    #                 # Draw the frontier map and grid data; after rotating to have the view match
+    #                 ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
+    #                 ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
+    #             except:
+    #                 self.get_logger().warning('Aborting graphing effort...')
 
     
-    def debug_plot_waypoint(self, debugger, ax, waypoint):
-        """
-        Plots current waypoint to move to on map
-        Written by Isaac
-        """
-        if (debugger):
-                try:
-                    # Draw the waypoint on the map; after rotating to have the view match
-                    ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
-                    plt.show(block=False)
-                    plt.pause(1)
-                    fig.clear()
-                except:
-                    self.get_logger().warning('Aborting graphing effort...')
+    # def debug_plot_waypoint(self, debugger, ax, waypoint):
+    #     """
+    #     Plots current waypoint to move to on map
+    #     Written by Isaac
+    #     """
+    #     if (debugger):
+    #             try:
+    #                 # Draw the waypoint on the map; after rotating to have the view match
+    #                 ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
+    #                 plt.show(block=False)
+    #                 plt.pause(1)
+    #                 fig.clear()
+    #             except:
+    #                 self.get_logger().warning('Aborting graphing effort...')
     
 
     def get_frontiers(self):
