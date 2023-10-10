@@ -131,7 +131,7 @@ class ExplorationNode(Node):
         Process behaviour tree log messag data
         Written by Callum
         """
-        latest_event = msg.event_log.pop()
+        latest_event = msg.event_log.pop(0)
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
 
@@ -153,7 +153,7 @@ class ExplorationNode(Node):
 
         # Make sure we have costmap information before proceeding
         while (self.dummy == None):
-            self.get_logger().info("Polling for costmap information from subscribed lister..")
+            self.get_logger().info("Polling for costmap information from subscribed lister...")
             time.sleep(3)
 
         # initialize frontier map and coordinates
@@ -168,7 +168,11 @@ class ExplorationNode(Node):
             frontier_coord = frontier_coords.pop(0)
 
             if self.last_coordinate == frontier_coord:
-                continue
+                try:
+                    self.get_logger().info("Found same coordinate, skipping...")
+                    frontier_coord = frontier_coords.pop(0)
+                except:
+                    continue
 
             frontier_coords.clear()
 
