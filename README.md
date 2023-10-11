@@ -32,9 +32,10 @@ export TURTLEBOT3_MODEL=waffle_pi
 ## Running our code
 In one terminal run:
 ```
-ros2 launch nav2_bringup tb3_simulation_launch.py slam:=True 
+ros2 launch nav2_bringup tb3_simulation_launch.py slam:=True world:=/path/to/world.world
 ```
 In another terminal run:
 ```
+ros2 param set /planner_server GridBased.use_final_approach_orientation True
 ros2 run navigation_commander exploration
 ```
