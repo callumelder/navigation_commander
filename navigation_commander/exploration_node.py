@@ -25,28 +25,30 @@ class ExplorationNode(Node):
         super().__init__(node_name='explorer')
 
         # initialize variables here
-        self.IS_FRONTIER_VALUE = 101
-        self.IS_UNKNOWN_VALUE = -1
-        self.THRESHHOLD_VALUE = 20
+        self.IS_FRONTIER_VALUE = 101    #value to represent frontier as it will display red in rvis
+        self.IS_UNKNOWN_VALUE = -1      #value used by Nav2 to represent unknow cell
+        self.THRESHHOLD_VALUE = 20      #values above -1 and below this are counted as known free space by get_frontiers
+        self.RADIUS_THRESHHOLD = 1      #radius arround robot for frontiers to be excluded, in meters
 
-        self.width = 0
-        self.height = 0
-        self.x_2D = 0
-        self.y_2D = 0
+        self.width = 0  #initialise variable for width in grid spacings of global costmap
+        self.height = 0 #initialise variable for height in grid spacings of global costmap
+        self.x_2D = 0   #initialise 2D array for x values of grid for displaying debug graph
+        self.y_2D = 0   #initialise 2D array for y values of grid for displaying debug graph
 
-        self.origin = [0, 0]
+        self.origin = [0, 0]    #initialise array for orgin of map in meters, published by info in costmap topic
 
-        self.grid_data_1D = None
-        self.grid_data_2D = None
-        self.frontier_map = np.zeros((self.width, self.height))
+        self.grid_data_1D = None    #initialise 1D array for data published by global costmap 
+        self.grid_data_2D = None    #initialise 2D array for above data to be shaped into costmap size
+        self.grid_data_2D_exsists = False   #so we can check if the array has been filled, checking if == None dosen't work
+        self.frontier_map = np.zeros((self.width, self.height)) #initialise grid for frontiers to be added
 
-        self.init_position = (0, 0)
+        self.init_position = (0, 0) # dont think this is used
 
-        self.node_name = 'NavigateRecovery'
-        self.current_status = 'IDLE'
-        self.currentPose = None
+        self.node_name = 'NavigateRecovery' # not sure, some kind of check to see if node as initialised
+        self.current_status = 'IDLE'        # gets status from Nav2 behaviour tree
+        self.currentPose = None             # store pose from pose Odom topic
 
-        # subscribe to costmap
+        # subscribe to costmap, used to find frontiers
         self.costmap_subscription = self.create_subscription(
             OccupancyGrid,
             '/global_costmap/costmap',
@@ -55,12 +57,13 @@ class ExplorationNode(Node):
         )
         self.costmap_subscription # prevent unused variable warning
 
-        # subscribe to behaviour tree log
+        # subscribe to behaviour tree log, used to find out if waypoint has been reached
         self.btl_subscription = self.create_subscription(
             BehaviorTreeLog,
             'behavior_tree_log',
             self.bt_log_callback,
-            10)
+            10
+        )
         self.btl_subscription # prevent unused variable warning
 
         # publisher for goal waypoint
@@ -69,14 +72,14 @@ class ExplorationNode(Node):
             'goal_pose',
             10
         )
-
+        # settings for pose Quality of service
         pose_qos = QoSProfile(
-            durability = QoSDurabilityPolicy.TRANSIENT_LOCAL,
+            durability = QoSDurabilityPolicy.VOLATILE,
             reliability = QoSReliabilityPolicy.RELIABLE,
             history = QoSHistoryPolicy.KEEP_LAST,
-            depth = 1
+            depth = 5
         )
-
+        # subscribe to odom to get robots current position
         self.model_pose_sub = self.create_subscription(
             Odometry,
             '/odom',
@@ -91,36 +94,38 @@ class ExplorationNode(Node):
         Processes the data received from the cost map
         Written by Isaac
         """
-        self.width = msg.info.width
-        self.height = msg.info.height
-        self.resolution = msg.info.resolution
+        self.width = msg.info.width             #extracts width in grid points from costmap info data
+        self.height = msg.info.height           #extracts height in grid points from costmap info data
+        self.resolution = msg.info.resolution   #extracts grid resolution from costmap info data, default 0.05 m
 
-        # Grab the origin from the costmap
+        # Grab the origin from the costmap, in meters
         origin = msg.info.origin
         self.origin[0] = origin.position.x
         self.origin[1] = origin.position.y
 
-        self.grid_data_1D = list(msg.data)
+        self.grid_data_1D = list(msg.data)  #puts the data from the costmap into grid_data_1D
 
-        x = np.linspace(0, 1, self.width)
-        y = np.linspace(0, 1, self.height)
+        x = np.linspace(0, 1, self.width)   #makes an array between 0 and 1 the the same number of eliments as width of map 
+        y = np.linspace(0, 1, self.height)  #makes an array between 0 and 1 the the same number of eliments as height of map
 
-        self.ax = fig.add_subplot(111)
+        if (DEBUG_WITH_GRAPH):  # if debugger value is set to True, do the following
+                try:
+                    self.ax = fig.add_subplot(111)      #plots stuff that is not there yet? not sure why it is out of its container
+                except:
+                    self.get_logger().warning('Aborting graphing effort...1')
 
         # Update costmap coordinates using the origin information
-        # WIDTH = abs(2.0*self.origin[0])
-        # HEIGHT = abs(2.0*self.origin[1])
-        WIDTH = self.resolution*self.width   # width in meters
-        HEIGHT = self.resolution*self.height
-        x = (x)*WIDTH + self.origin[0]
-        y = (y)*HEIGHT + self.origin[1]
+        WIDTH = self.resolution*self.width      # width in meters
+        HEIGHT = self.resolution*self.height    # height im meters
+        x = (x)*WIDTH + self.origin[0]          # makes an array in meters of the x coordinates of the costmap
+        y = (y)*HEIGHT + self.origin[1]         # makes an array in meters of the y coordinates of the costmap
 
-        self.x_2D, self.y_2D = np.meshgrid(x,y)
+        self.x_2D, self.y_2D = np.meshgrid(x,y) # making a mesh for displaying in debug graph
 
-        # Convert this into a grid
+        # Convert 1D data into a grid, note: this is in grid reference, not meters
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
-
-
+        self.grid_data_2D_exsists = True
+        # used to find out if robot gets to waypoint
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
         Process behaviour tree log messag data
@@ -130,7 +135,7 @@ class ExplorationNode(Node):
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
 
-    def poseCallback(self, msg):
+    def poseCallback(self, msg):    #to get robots position in meters, for finding distance between it and frontiers
         """
         gets current pose of robot - u can compare this to the goal pose u want to send
         pose is in header_frame_id <- should be 'map' here
@@ -138,6 +143,7 @@ class ExplorationNode(Node):
         wiki.ros.org/amcl
         """
         self.currentPose = msg.pose.pose
+        self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
 
     
     def explore_map(self):
@@ -147,64 +153,44 @@ class ExplorationNode(Node):
         """
 
         # Make sure we have costmap information before proceeding
-        while (self.grid_data_1D == None):
+        #while (self.grid_data_2D == None):  #wait until we get costmap data
+        while (self.grid_data_2D_exsists == False):  #wait until we get costmap data
             self.get_logger().info("Polling for costmap information from subscribed lister..")
             time.sleep(1)
 
         # initialize frontier map and coordinates
-        frontier_coords = []
-        self.frontier_map = self.get_frontiers()
-        max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-        frontier_coords.extend(max_coordinates)
+        frontier_coords = []                                                        #initialise list of frontier coordinates
+        self.frontier_map = self.get_frontiers()                                    #gets a map of frontier points. 2D array with 0s for not frontier and 101 for frontier
+        max_coordinates = self.find_highest_frontier_density(self.frontier_map)     #gets top 3 heighest density point, sorted list of x and y coordinates in grid values
+        frontier_coords.extend(max_coordinates)                                     #puts top 3 to end of empty frontier_coords.list ?
 
-        while len(frontier_coords) > 0:
+        while len(frontier_coords) > 0:                 #while more than nothing in the list do..
             time.sleep(1)
-            self.frontier_map = self.get_frontiers()
-            frontier_coord = frontier_coords.pop(0)
-            frontier_coords.clear()
+            self.frontier_map = self.get_frontiers()    #get the frontier map
+            frontier_coord = frontier_coords.pop(0)     #gets the first coord pair and save to frontier_coord
+            frontier_coords.clear()                     #empty the list
 
-            self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
+            #print('I get to just before debug_plot_map')
+            #self.debug_plot_map(DEBUG_WITH_GRAPH, self.ax)
 
-            print(f'Current Coordinate: {frontier_coord}')
-
-            waypoint = self.convert_to_waypoint(frontier_coord)
-
-            self.debug_plot_waypoint(DEBUG_WITH_GRAPH, self.ax, waypoint)
-
-            # move to frontier
-            self.send_goal_waypoint(waypoint)
-            max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-
-            if (len(max_coordinates) == 0):
-                self.get_logger().warning('No maximum density found; likely have completed mapping...')
-                break
-
-            frontier_coords.extend(max_coordinates)
-
-        self.get_logger().info('Map complete!')
-        
-        return
-    
-    def debug_plot_map(self, debugger, ax):
-        """
-        Plots frontier map
-        Written by Isaac
-        """
-        if (debugger):
+            if (DEBUG_WITH_GRAPH):
                 try:
                     # Draw the frontier map and grid data; after rotating to have the view match
-                    ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
-                    ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
+                    ax = fig.add_subplot(111)
+                    ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)                #draws received costmap
+                    ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])    #draws frontiers in red
                 except:
                     self.get_logger().warning('Aborting graphing effort...')
 
-    
-    def debug_plot_waypoint(self, debugger, ax, waypoint):
-        """
-        Plots current waypoint to move to on map
-        Written by Isaac
-        """
-        if (debugger):
+
+            print(f'Current Coordinate: {frontier_coord}')
+
+            waypoint = self.convert_to_waypoint(frontier_coord) #converts from grid reff to meters
+
+            #print('I get to just before debug_plot_map')
+            #self.debug_plot_waypoint(DEBUG_WITH_GRAPH, self.ax, waypoint)
+
+            if (DEBUG_WITH_GRAPH):
                 try:
                     # Draw the waypoint on the map; after rotating to have the view match
                     ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
@@ -213,6 +199,52 @@ class ExplorationNode(Node):
                     fig.clear()
                 except:
                     self.get_logger().warning('Aborting graphing effort...')
+
+
+            # move to frontier
+            self.send_goal_waypoint(waypoint)  #send waypoint to Nav2 stack to move robot
+            max_coordinates = self.find_highest_frontier_density(self.frontier_map) #recheck map for frontiers, not sure if needed???
+
+            if (len(max_coordinates) == 0): #check to see if their are any more frontiers
+                self.get_logger().warning('No maximum density found; likely have completed mapping...')
+                break
+
+            frontier_coords.extend(max_coordinates) #if their are frontiers, add them to list
+
+        self.get_logger().info('Map complete!')
+        
+        return
+    
+    # def debug_plot_map(self, debugger, ax):
+    #     """
+    #     Plots frontier map
+    #     Written by Isaac
+    #     """
+    #     print('I get to debug_plot_map')
+    #     if (debugger):  # if debugger value is set to True, do the following
+    #             try:
+    #                 # Draw the frontier map and grid data; after rotating to have the view match
+    #                 ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
+    #                 ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
+    #             except:
+    #                 self.get_logger().warning('Aborting graphing effort...2')
+
+    
+    # def debug_plot_waypoint(self, debugger, ax, waypoint):
+    #     """
+    #     Plots current waypoint to move to on map
+    #     Written by Isaac
+    #     """
+    #     print('I get to debug_plot_waypoint')
+    #     if (debugger):
+    #             try:
+    #                 # Draw the waypoint on the map; after rotating to have the view match
+    #                 ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
+    #                 plt.show(block=False)
+    #                 plt.pause(1)
+    #                 fig.clear()
+    #             except:
+    #                 self.get_logger().warning('Aborting graphing effort...3')
     
 
     def get_frontiers(self):
@@ -318,23 +350,38 @@ class ExplorationNode(Node):
         if len(frontier_map) == 0:
             return (0, 0)
         
-        coordinate_density_pairs = {}
-        rows, cols = len(frontier_map), len(frontier_map[0])
-        top_coordinate_num = 3
-        threshold = 0
-
+        #coordinate_density_pairs = {}
+        coordinate_density_distance_pairs = {}
+        rows, cols = len(frontier_map), len(frontier_map[0])    #1st finds the number of lists, then the number of items in the list
+        top_coordinate_num = 3                                  #number of coordinates in list
+        threshold = 0                                           #lowest number of frontiers to be included
+        robot_position = self.robot_position_meters
         for row in range(rows):
             for col in range(cols):
                 sub_map = frontier_map[row:row+kernel, col:col+kernel]
                 density = np.sum(sub_map)
                 if density > threshold:
-                    coordinate = (self.x_2D[row][col], self.y_2D[row][col])
-                    coordinate_density_pairs[coordinate] = density
+                    distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   #calculates the distance between the robot and frontier
+                    #print('distance:',distance)
+                    if distance < self.RADIUS_THRESHHOLD:   # if the distance is under 1m then it makes it 100m to push it to the bottom of the list
+                        distance = 100
+                    #distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]],robot_position)
+                    coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
+                    coordinate_density_distance_pairs[coordinate] = None    # don't realy understand why I need to do this
+                    #coordinate_density_pairs[coordinate] = density
+                    
 
-        # sort coordinates based on highest density, adding top 3 to top_coordinates
-        sorted_coordinates = sorted(coordinate_density_pairs.items(), key=lambda x: x[1], reverse=True)
+        # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
+        sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))  
+
+        # # prints the complete list of Sorted Coordinate-Density Pairs
+        # print("Sorted Coordinate-Density Pairs:")
+        # for coordinate in sorted_coordinates:
+        #     print(f"Coordinate: {coordinate}, Density: {coordinate[2]}, Distance: {coordinate[3]}")
+
         top_coordinates = sorted_coordinates[:top_coordinate_num]
-        top_coordinates = [coordinate for coordinate, _ in top_coordinates]
+        print('topcords and stuff', top_coordinates)
+        top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
 
 
         print(f'Top Coordinates: {top_coordinates}')
@@ -349,7 +396,7 @@ class ExplorationNode(Node):
         dy = point1[1] - point2[1]
         return (dx**2+dy**2)**0.5
     
-    def convert_to_waypoint(self, inspection_point):
+    def convert_to_waypoint(self, inspection_point):    #takes points in map grid reff to meters, I think???
         """
         Converts frontier to waypoint
         Jasmine
