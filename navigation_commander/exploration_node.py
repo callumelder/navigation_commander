@@ -16,7 +16,7 @@ import threading
 import matplotlib.pyplot as plt
 
 # Create a global fig (for testing)
-DEBUG_WITH_GRAPH=False
+DEBUG_WITH_GRAPH=True
 if (DEBUG_WITH_GRAPH):
     fig = plt.figure()
 
@@ -28,7 +28,7 @@ class ExplorationNode(Node):
         self.IS_FRONTIER_VALUE = 101    #value to represent frontier as it will display red in rvis
         self.IS_UNKNOWN_VALUE = -1      #value used by Nav2 to represent unknow cell
         self.THRESHHOLD_VALUE = 20      #values above -1 and below this are counted as known free space by get_frontiers
-        self.RADIUS_THRESHHOLD = 1      #radius arround robot for frontiers to be excluded, in meters
+        self.RADIUS_THRESHHOLD = 1.5      #radius arround robot for frontiers to be excluded, in meters
 
         self.dummy = None
 
@@ -41,7 +41,7 @@ class ExplorationNode(Node):
 
         self.grid_data_1D = None    #initialise 1D array for data published by global costmap 
         self.grid_data_2D = None    #initialise 2D array for above data to be shaped into costmap size
-        self.grid_data_2D_exsists = False   #so we can check if the array has been filled, checking if == None dosen't work
+        self.grid_data_2D_exists = False   #so we can check if the array has been filled, checking if == None dosen't work
         self.frontier_map = np.zeros((self.width, self.height)) #initialise grid for frontiers to be added
 
         self.init_position = (0, 0)
@@ -121,8 +121,7 @@ class ExplorationNode(Node):
 
         # Convert 1D data into a grid, note: this is in grid reference, not meters
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
-        self.grid_data_2D_exsists = True
-        # used to find out if robot gets to waypoint
+        self.grid_data_2D_exists = True # used to find out if robot gets to waypoint
 
         self.dummy = 1
 
@@ -164,10 +163,11 @@ class ExplorationNode(Node):
         frontier_coords.extend(max_coordinates)                                     #puts top 3 to end of empty frontier_coords.list ?
 
         while len(frontier_coords) > 0:
-            time.sleep(1)
 
             self.frontier_map = self.get_frontiers()
             frontier_coord = frontier_coords.pop(0)
+
+            # print(f'Current Coordinate: {frontier_coord}')
 
             if self.last_coordinate == frontier_coord:
                 try:
@@ -199,17 +199,6 @@ class ExplorationNode(Node):
                 except:
                     self.get_logger().warning('Aborting graphing effort...')
 
-            if (DEBUG_WITH_GRAPH):
-                try:
-                    # Draw the waypoint on the map; after rotating to have the view match
-                    ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
-                    plt.show(block=False)
-                    plt.pause(1)
-                    fig.clear()
-                except:
-                    self.get_logger().warning('Aborting graphing effort...')
-
-
             # move to frontier
             self.send_goal_waypoint(waypoint)  #send waypoint to Nav2 stack to move robot
             max_coordinates = self.find_highest_frontier_density(self.frontier_map) #recheck map for frontiers, not sure if needed???
@@ -218,7 +207,7 @@ class ExplorationNode(Node):
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
 
-            frontier_coords.extend(max_coordinates) #if their are frontiers, add them to list
+            frontier_coords.extend(max_coordinates)
 
             self.last_coordinate = frontier_coord
 
@@ -326,11 +315,17 @@ class ExplorationNode(Node):
         Finds coordinates of an area of size kernel that contains the most frontiers
         Callum
         """
+        # print(f'Current Node: {self.node_name}')
+        # print(f'Current Status: {self.current_status}')
+
+        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
+            self.get_logger().info('Waiting for goal to finish...')
+            time.sleep(3)
+
         self.get_logger().info('Finding highest frontier density coordinate...')
         if len(frontier_map) == 0:
             return (0, 0)
         
-        #coordinate_density_pairs = {}
         coordinate_density_distance_pairs = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    #1st finds the number of lists, then the number of items in the list
         top_coordinate_num = 3                                  #number of coordinates in list
@@ -340,26 +335,24 @@ class ExplorationNode(Node):
             for col in range(cols):
                 sub_map = frontier_map[row:row+kernel, col:col+kernel]
                 density = np.sum(sub_map)
+
                 if density > threshold:
                     distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   #calculates the distance between the robot and frontier
-                    #print('distance:',distance)
                     if distance < self.RADIUS_THRESHHOLD:   # if the distance is under 1m then it makes it 100m to push it to the bottom of the list
                         distance = 100
                     #distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]],robot_position)
                     coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
-                    coordinate_density_distance_pairs[coordinate] = None    # don't realy understand why I need to do this
-                    #coordinate_density_pairs[coordinate] = density
+                    coordinate_density_distance_pairs[coordinate] = None
                     
 
         # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
         sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))
 
+        # print(f'Sorted Coordinates: {sorted_coordinates[:top_coordinate_num]}')
+
         top_coordinates = sorted_coordinates[:top_coordinate_num]
-        print('topcords and stuff', top_coordinates)
         top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
 
-
-        # print(f'Top Coordinates: {top_coordinates}')
 
         return top_coordinates
     
@@ -392,17 +385,9 @@ class ExplorationNode(Node):
         Sends goal waypoint to Nav2
         Written by Chen and Callum
         """
-        # start_time = time.time()
-        # break_time = 20
-        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
-            # elapsed_time = time.time() - start_time
-            # if elapsed_time >= break_time:
-            #     self.get_logger().info('Took too long, breaking...')
-            #     break
-            self.get_logger().info('Waiting for goal to finish...')
-            time.sleep(3)
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
+        time.sleep(3)
 
 
 def main(args=None):
