@@ -32,6 +32,9 @@ class ExplorationNode(Node):
 
         self.dummy = None
 
+        self.frontier_coord = None
+        self.frontier_coords = []
+
         self.width = 0
         self.height = 0
         self.x_2D = 0
@@ -157,26 +160,26 @@ class ExplorationNode(Node):
             time.sleep(3)
 
         # initialize frontier map and coordinates
-        frontier_coords = []                                                        #initialise list of frontier coordinates
+        self.frontier_coords = []                                                        #initialise list of frontier coordinates
         self.frontier_map = self.get_frontiers()                                    #gets a map of frontier points. 2D array with 0s for not frontier and 101 for frontier
         max_coordinates = self.find_highest_frontier_density(self.frontier_map)     #gets top 3 heighest density point, sorted list of x and y coordinates in grid values
-        frontier_coords.extend(max_coordinates)                                     #puts top 3 to end of empty frontier_coords.list ?
+        self.frontier_coords.extend(max_coordinates)                                     #puts top 3 to end of empty frontier_coords.list ?
 
-        while len(frontier_coords) > 0:
+        while len(self.frontier_coords) > 0:
 
             self.frontier_map = self.get_frontiers()
-            frontier_coord = frontier_coords.pop(0)
+            self.frontier_coord = self.frontier_coords.pop(0)
 
             # print(f'Current Coordinate: {frontier_coord}')
 
-            if self.last_coordinate == frontier_coord:
+            if self.last_coordinate == self.frontier_coord:
                 try:
                     self.get_logger().info("Found same coordinate, skipping...")
-                    frontier_coord = frontier_coords.pop(0)
+                    self.frontier_coord = self.frontier_coords.pop(0)
                 except:
                     continue
 
-            frontier_coords.clear()
+            waypoint = self.convert_to_waypoint(self.frontier_coord) #converts from grid reff to meters
 
             if (DEBUG_WITH_GRAPH):
                 try:
@@ -184,14 +187,6 @@ class ExplorationNode(Node):
                     ax = fig.add_subplot(111)
                     ax.contour(-self.y_2D, self.x_2D, self.grid_data_2D-200, 10)
                     ax.contour(-self.y_2D, self.x_2D, self.frontier_map, 10, colors=['red'])
-                except:
-                    self.get_logger().warning('Aborting graphing effort...')
-
-            waypoint = self.convert_to_waypoint(frontier_coord) #converts from grid reff to meters
-
-            if (DEBUG_WITH_GRAPH):
-                try:
-                    # Draw the waypoint on the map; after rotating to have the view match
                     ax.plot(-waypoint.pose.position.y, waypoint.pose.position.x, 0, marker = '^', color='black')
                     plt.show(block=False)
                     plt.pause(1)
@@ -201,15 +196,20 @@ class ExplorationNode(Node):
 
             # move to frontier
             self.send_goal_waypoint(waypoint)  #send waypoint to Nav2 stack to move robot
-            max_coordinates = self.find_highest_frontier_density(self.frontier_map) #recheck map for frontiers, not sure if needed???
+
+            self.wait_for_goal()
+
+            self.frontier_coords.clear()
+
+            max_coordinates = self.find_highest_frontier_density(self.frontier_map)
 
             if (len(max_coordinates) == 0): #check to see if their are any more frontiers
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
 
-            frontier_coords.extend(max_coordinates)
+            self.frontier_coords.extend(max_coordinates)
 
-            self.last_coordinate = frontier_coord
+            self.last_coordinate = self.frontier_coord
 
         self.get_logger().info('Map complete!')
         
@@ -309,40 +309,56 @@ class ExplorationNode(Node):
                         number_of_frontier_points = number_of_frontier_points + 1
         return frontier_map
     
+    def wait_for_goal(self):
+        start_time = time.time()
+        break_time = 10
+        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
+            elapsed_time = time.time() - start_time
+            print(f'Frontier Coordinate: {self.frontier_coord}')
+            if elapsed_time >= break_time:
+                try:
+                    self.get_logger().warn('Took too long to get to goal, moving to next frontier...')
+                    self.frontier_coord = self.frontier_coords.pop(1)
+                    waypoint = self.convert_to_waypoint(self.frontier_coord)
+                    self.send_goal_waypoint(waypoint)
+                    print(f'New Coordinate: {self.frontier_coord}')
+                    break
+                except:
+                    self.get_logger().warn('Ran out of frontiers, calculating new ones...')
+                    break
+            self.get_logger().info('Waiting for goal to finish...')
+            time.sleep(3)
+    
 
-    def find_highest_frontier_density(self, frontier_map, kernel=3):
+    def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
         Finds coordinates of an area of size kernel that contains the most frontiers
         Callum
         """
-        # print(f'Current Node: {self.node_name}')
-        # print(f'Current Status: {self.current_status}')
-
-        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
-            self.get_logger().info('Waiting for goal to finish...')
-            time.sleep(3)
-
         self.get_logger().info('Finding highest frontier density coordinate...')
         if len(frontier_map) == 0:
             return (0, 0)
         
+        half_kernel = int(kernel/2)
         coordinate_density_distance_pairs = {}
-        rows, cols = len(frontier_map), len(frontier_map[0])    #1st finds the number of lists, then the number of items in the list
-        top_coordinate_num = 3                                  #number of coordinates in list
-        threshold = 0                                           #lowest number of frontiers to be included
+        rows, cols = len(frontier_map), len(frontier_map[0])    
+        top_coordinate_num = 3                                  
+        threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)            
         robot_position = self.robot_position_meters
         for row in range(rows):
             for col in range(cols):
-                sub_map = frontier_map[row:row+kernel, col:col+kernel]
-                density = np.sum(sub_map)
+                try:
+                    sub_map = frontier_map[row-half_kernel:row+half_kernel, col-half_kernel:col+half_kernel]
+                    density = np.sum(sub_map)
 
-                if density > threshold:
-                    distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   #calculates the distance between the robot and frontier
-                    if distance < self.RADIUS_THRESHHOLD:   # if the distance is under 1m then it makes it 100m to push it to the bottom of the list
-                        distance = 100
-                    #distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]],robot_position)
-                    coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
-                    coordinate_density_distance_pairs[coordinate] = None
+                    if density > threshold:
+                        distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   
+                        if distance < self.RADIUS_THRESHHOLD:   
+                            distance = 100 # set large distance to move to end of list
+                        coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
+                        coordinate_density_distance_pairs[coordinate] = None
+                except:
+                    continue
                     
 
         # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
