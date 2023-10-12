@@ -4,11 +4,13 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
+from math import sqrt, pow
 
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
+from nav_msgs.msg import Path
 
 import numpy as np
 import threading
@@ -91,6 +93,13 @@ class ExplorationNode(Node):
             self.pose_callback,
             pose_qos
         )
+        # docs.ros2.org/foxy/api/nav_msgs/msg/Path.html
+        self.path_sub = self.create_subscription(
+            Path,
+            '/Path',
+            self.path_callback,
+            10
+        )
         
 
 
@@ -129,7 +138,7 @@ class ExplorationNode(Node):
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
-        Process behaviour tree log messag data
+        Process behaviour tree log message data
         Written by Callum
         """
         latest_event = msg.event_log.pop(-1)
@@ -145,7 +154,20 @@ class ExplorationNode(Node):
         """
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
-
+    
+    def path_callback(self,data):
+        """
+        Uses the data from the path planner to determine what the "cost" (total distance) 
+        of the path that the bot is planning to take
+        """
+        for i in range(len(data.poses)-1):
+            x1 = data.poses[i].pose.position.x
+            y1 = data.poses[i].pose.position.y
+            x2 = data.poses[i+1].pose.position.x
+            y2 = data.poses[i+1].pose.position.y
+            distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
+            total_distance += distance
+        return total_distance
     
     def explore_map(self):
         """
