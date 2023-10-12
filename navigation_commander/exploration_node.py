@@ -11,6 +11,7 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 
 import numpy as np
+from math import dist
 import threading
 
 import matplotlib.pyplot as plt
@@ -33,7 +34,10 @@ class ExplorationNode(Node):
         self.dummy = None
 
         self.frontier_coord = None
+        self.top_coordinates = []
         self.frontier_coords = []
+
+        self.stuck_count = 0
 
         self.width = 0
         self.height = 0
@@ -222,31 +226,53 @@ class ExplorationNode(Node):
                 try:
                     self.get_logger().warn('Took too long to get to goal, moving to next frontier...')
                     self.frontier_coord = self.frontier_coords.pop(0)
+                    distance = dist(self.frontier_coord, self.last_coordinate)
+                    if distance < 3.0:
+                        self.get_logger().warn('Coordinate too close, finding further away one...')
+                        filtered_coordinates = self.filter_coordinates(self.top_coordinates)
+                        self.frontier_coord = filtered_coordinates.pop(-1) # go to far away frontier
                     waypoint = self.convert_to_waypoint(self.frontier_coord)
                     self.send_goal_waypoint(waypoint)
+                    self.temporary_wait()
                     break
                 except:
                     self.get_logger().warn('Ran out of frontiers, calculating new ones...')
                     break
             self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
+
+    
+    def temporary_wait(self):
+        """
+        Waits for goal to finish, doesn't check if stuck
+        """
+        start_time = time.time()
+        break_time = 20
+        while self.node_name != 'NavigateRecovery' and self.current_status != 'IDLE':
+            elapsed_time = time.time() - start_time
+            if elapsed_time >= break_time:
+                self.get_logger().warn('Took too long to get to goal, moving to next frontier...')
+                break
+            self.get_logger().info('Waiting for temporary goal to finish...')
+            time.sleep(3)
     
 
     def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
         Finds coordinates of an area of size kernel that contains the most frontiers
-        Callum
+        Callum and Isaac
         """
         self.get_logger().info('Finding highest frontier density coordinate...')
         if len(frontier_map) == 0:
             return (0, 0)
         
         half_kernel = int(kernel/2)
-        coordinate_density_distance_pairs = {}
+        coordinate_dictionary = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
         top_coordinate_num = 3                                  
         threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)            
         robot_position = self.robot_position_meters
+        frontiers_too_close = 0
         for row in range(rows):
             for col in range(cols):
                 try:
@@ -254,23 +280,53 @@ class ExplorationNode(Node):
                     density = np.sum(sub_map)
 
                     if density > threshold:
-                        distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   
-                        if distance < self.RADIUS_THRESHHOLD:   
+                        distance = self.calculate_distance([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   
+                        if distance < self.RADIUS_THRESHHOLD:  
+                            frontiers_too_close += 1 
                             distance = 100 # set large distance to move to end of list
-                        coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
-                        coordinate_density_distance_pairs[coordinate] = None
+                        coordinate = (self.x_2D[row][col], self.y_2D[row][col])
+                        coordinate_dictionary[coordinate] = (density, distance)
                 except:
                     continue
     
         # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
-        sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))
+        sorted_coordinate_dictionary = sorted(coordinate_dictionary.items(), key=lambda item: item[1][1])
 
-        top_coordinates = sorted_coordinates[:top_coordinate_num]
-        top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
+        # for key, value in sorted_coordinate_dictionary:
+        #     print(f'Key {key}, Value: {value}')
 
-        return top_coordinates
+        self.top_coordinates = [key for key, _ in sorted_coordinate_dictionary]
+
+        # top_coordinates = sorted_coordinate_dictionary[:top_coordinate_num]
+        # top_coordinates = sorted_coordinate_dictionary[:-frontiers_too_close]
+        # top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
+
+        return self.top_coordinates
     
-    def calc_dist(self, point1, point2):
+    def filter_coordinates(self, coordinates):
+        filtered_coordinates = []
+
+        # Iterate through the coordinates and compare distances
+        for i in range(len(coordinates)):
+            # Flag to keep track of whether the current coordinate should be removed
+            remove_current = False
+            
+            for j in range(i + 1, len(coordinates)):
+                # Calculate the distance between coordinates i and j
+                distance = dist(coordinates[i], coordinates[j])
+                
+                # If the distance is less than 1 meter, mark the current coordinate for removal
+                if distance < 5.0:
+                    remove_current = True
+                    break  # No need to compare with other coordinates
+                
+            # If the current coordinate is not marked for removal, add it to the filtered list
+            if not remove_current:
+                filtered_coordinates.append(coordinates[i])
+
+        return filtered_coordinates
+    
+    def calculate_distance(self, point1, point2):
         """
         calculates euclidean distance between two points represented by tuples in form (x,y)
         Written by Jasmine
