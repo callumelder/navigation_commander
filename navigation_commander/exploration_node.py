@@ -97,7 +97,13 @@ class ExplorationNode(Node):
         self.path_sub = self.create_subscription(
             Path,
             '/Path',
-            self.path_callback,
+            self.path_sub_callback,
+            10
+        )
+        self.path_pub = self.create_publisher(
+            PoseStamped,
+            '/move_base_simple/goal',
+            self.path_pub_publisher,
             10
         )
         
@@ -155,10 +161,11 @@ class ExplorationNode(Node):
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
     
-    def path_callback(self,data):
+    def path_sub_callback(self,data):
         """
         Uses the data from the path planner to determine what the "cost" (total distance) 
         of the path that the bot is planning to take
+        input: data <- this is a Path() variable
         """
         for i in range(len(data.poses)-1):
             x1 = data.poses[i].pose.position.x
@@ -168,6 +175,15 @@ class ExplorationNode(Node):
             distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
             total_distance += distance
         return total_distance
+    
+    def path_pub_publisher(self,goal):
+        """
+        Publishes a set of goal poses for the robot to take in order to get to the "main" goal pose/the end one
+        Run this publisher to publish a set of poses to get to the goal waypoint, then run the subscriber to calculate
+        how much distance those set of poses will cover
+        input: goal pose <- PoseStamped() variable
+        """
+        self.path_pub.publish(goal)
     
     def explore_map(self):
         """
@@ -306,7 +322,7 @@ class ExplorationNode(Node):
         Converts frontier to waypoint
         Written by Jasmine
         input: tuple of (x,y)
-        output: gives a target goal for the bot to reach
+        output: gives a target goal for the bot to reach <- PoseStamped variable
         """
         self.get_logger().info('Converting waypoint...')
         inspection_pose = PoseStamped()
