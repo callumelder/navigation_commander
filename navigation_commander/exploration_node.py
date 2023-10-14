@@ -135,7 +135,8 @@ class ExplorationNode(Node):
             self.path_sub_callback,
             10
         )
-        #https://navigation.ros.org/about/ros1_comparison.html
+        #https://wiki.ros.org/move_base
+        #alternatively from move_base http://docs.ros.org/en/api/nav_msgs/html/srv/GetPlan.html
         self.path_pub = self.create_publisher(
             PoseStamped,
             '/move_base/goal',
