@@ -12,6 +12,12 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 from nav_msgs.msg import Path
 
+from sensor_msgs.msg import Image # Image is the message type
+from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
+import cv2 # OpenCV library
+import argparse
+import sys
+
 import numpy as np
 import threading
 
@@ -54,6 +60,35 @@ class ExplorationNode(Node):
         self.node_name = 'NavigateRecovery' # not sure, some kind of check to see if node as initialised
         self.current_status = 'IDLE'        # gets status from Nav2 behaviour tree
         self.currentPose = None             # store pose from pose Odom topic
+        self.path = None
+        
+        self.br = CvBridge() # used to convert between ROS and OpenCV images
+        self.current_frame = None
+
+
+        self.ARUCO_DICT = {
+	        "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
+	        "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
+	        "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
+	        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
+	        "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
+	        "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
+	        "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
+	        "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
+	        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
+	        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
+	        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
+	        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
+	        "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
+	        "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
+	        "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
+	        "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
+	        "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
+	        "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
+	        "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
+	        "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
+	        "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
+        }
 
         # subscribe to costmap, used to find frontiers
         self.costmap_subscription = self.create_subscription(
@@ -106,7 +141,13 @@ class ExplorationNode(Node):
             self.path_pub_publisher,
             10
         )
-        
+        #subscriber 
+        self.image_sub = self.create_subscription(
+            Image,
+            'video_frames',
+            self.image_callback,
+            10
+        )
 
 
     def global_costmap_callback(self, msg):
@@ -183,7 +224,14 @@ class ExplorationNode(Node):
         how much distance those set of poses will cover
         input: goal pose <- PoseStamped() variable
         """
-        self.path_pub.publish(goal)
+        self.path = self.path_pub.publish(goal)
+
+    def image_callback(self, data):
+        """
+        gets the images from ROS -> converts it to OpenCV image then stores it in
+        self.current_frame variable
+        """
+        self.current_frame = self.br.imgmsg_to_cv2(data)
     
     def explore_map(self):
         """
@@ -340,7 +388,23 @@ class ExplorationNode(Node):
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
         time.sleep(3)
-
+    
+    def check_aruco(self, data):
+        """
+        This function checks if there is an (recognisable) aruco in the image
+        input: data <- image variable
+        """
+        ap = argparse.ArgumentParser()
+        ap.add_argument("-t", "--type", type=str,
+	    default="DICT_ARUCO_ORIGINAL",
+	    help="type of ArUCo tag to detect")
+        args = vars(ap.parse_args())
+        if self.ARUCO_DICT.get(args["type"],None) is None:
+            sys.exit(0)
+        arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[args["type"]])
+        arucoParams = cv2.aruco.DetectorParameters_create()
+        (corners, ids, rejected) = cv2.aruco.detectMarkers(data, arucoDict, parameters=arucoParams)
+        return len(corners)>0
 
     def get_frontiers(self):
         """
