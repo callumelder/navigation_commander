@@ -135,13 +135,14 @@ class ExplorationNode(Node):
             self.path_sub_callback,
             10
         )
+        #https://navigation.ros.org/about/ros1_comparison.html
         self.path_pub = self.create_publisher(
             PoseStamped,
-            '/move_base_simple/goal',
+            '/move_base/goal',
             self.path_pub_publisher,
             10
         )
-        #subscriber 
+        #subscriber for images
         self.image_sub = self.create_subscription(
             Image,
             'video_frames',
