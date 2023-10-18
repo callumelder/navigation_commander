@@ -12,11 +12,11 @@ from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 from nav_msgs.msg import Path
 
-from sensor_msgs.msg import Image # Image is the message type
-from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
-import cv2 # OpenCV library
-import argparse
-import sys
+# from sensor_msgs.msg import Image # Image is the message type
+# from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
+# import cv2 # OpenCV library
+# import argparse
+# import sys
 
 import numpy as np
 import threading
@@ -62,33 +62,33 @@ class ExplorationNode(Node):
         self.currentPose = None             # store pose from pose Odom topic
         self.path = None
         
-        self.br = CvBridge() # used to convert between ROS and OpenCV images
-        self.current_frame = None
+        # self.br = CvBridge() # used to convert between ROS and OpenCV images
+        # self.current_frame = None
 
 
-        self.ARUCO_DICT = {
-	        "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
-	        "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
-	        "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
-	        "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
-	        "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
-	        "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
-	        "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
-	        "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
-	        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
-	        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
-	        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-	        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
-	        "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
-	        "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
-	        "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
-	        "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
-	        "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
-	        "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
-	        "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
-	        "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
-	        "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
-        }
+        # self.ARUCO_DICT = {
+	    #     "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
+	    #     "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
+	    #     "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
+	    #     "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
+	    #     "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
+	    #     "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
+	    #     "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
+	    #     "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
+	    #     "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
+	    #     "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
+	    #     "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
+	    #     "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
+	    #     "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
+	    #     "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
+	    #     "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
+	    #     "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
+	    #     "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
+	    #     "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
+	    #     "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
+	    #     "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
+	    #     "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
+        # }
 
         # subscribe to costmap, used to find frontiers
         self.costmap_subscription = self.create_subscription(
@@ -128,13 +128,13 @@ class ExplorationNode(Node):
             self.pose_callback,
             pose_qos
         )
-        #subscriber for images
-        self.image_sub = self.create_subscription(
-            Image,
-            'video_frames',
-            self.image_callback,
-            10
-        )
+        # #subscriber for images
+        # self.image_sub = self.create_subscription(
+        #     Image,
+        #     'video_frames',
+        #     self.image_callback,
+        #     10
+        # )
 
 
     def global_costmap_callback(self, msg):
@@ -145,7 +145,7 @@ class ExplorationNode(Node):
         self.width = msg.info.width             #extracts width in grid points from costmap info data
         self.height = msg.info.height           #extracts height in grid points from costmap info data
         self.resolution = msg.info.resolution   #extracts grid resolution from costmap info data, default 0.05 m
-        self.lethal_cost = msg.info.lethal_cost_threshold
+        self.lethal_cost = 100
         self.costmap = msg.data
         # Grab the origin from the costmap, in meters
         origin = msg.info.origin
@@ -190,27 +190,27 @@ class ExplorationNode(Node):
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
     
-    def path_sub_callback(self,data):
-        """
-        Uses the data from the path planner to determine what the "cost" (total distance) 
-        of the path that the bot is planning to take
-        input: data <- this is a Path() variable
-        """
-        for i in range(len(data.poses)-1):
-            x1 = data.poses[i].pose.position.x
-            y1 = data.poses[i].pose.position.y
-            x2 = data.poses[i+1].pose.position.x
-            y2 = data.poses[i+1].pose.position.y
-            distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
-            total_distance += distance
-        return total_distance
+    # def path_sub_callback(self,data):
+    #     """
+    #     Uses the data from the path planner to determine what the "cost" (total distance) 
+    #     of the path that the bot is planning to take
+    #     input: data <- this is a Path() variable
+    #     """
+    #     for i in range(len(data.poses)-1):
+    #         x1 = data.poses[i].pose.position.x
+    #         y1 = data.poses[i].pose.position.y
+    #         x2 = data.poses[i+1].pose.position.x
+    #         y2 = data.poses[i+1].pose.position.y
+    #         distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
+    #         total_distance += distance
+    #     return total_distance
 
-    def image_callback(self, data):
-        """
-        gets the images from ROS -> converts it to OpenCV image then stores it in
-        self.current_frame variable
-        """
-        self.current_frame = self.br.imgmsg_to_cv2(data)
+    # def image_callback(self, data):
+    #     """
+    #     gets the images from ROS -> converts it to OpenCV image then stores it in
+    #     self.current_frame variable
+    #     """
+    #     self.current_frame = self.br.imgmsg_to_cv2(data)
     
     def explore_map(self):
         """
@@ -298,10 +298,10 @@ class ExplorationNode(Node):
     
     def astar(self, start_index, goal_index):
         """
-        pretty sure start_index and goal_index here are like actual costmap coordinates, no transformations or anything 
+        pretty sure start_index and goal_index here are like actual costmap coordinates, no transformations or anything
+        Output: 
         """
         resolution = self.resolution
-        costmap = self.costmap
         open_list = []
         closed_list = set()
         parents = dict()
@@ -359,6 +359,19 @@ class ExplorationNode(Node):
         shortest_path = shortest_path[::-1]
         return shortest_path, None
     
+    def path_dist(self,path):
+        """
+        Calculates distance in a path
+        """
+        for i in range(len(path.poses)-1):
+            x1 = path.poses[i][0]
+            y1 = path.poses[i][1]
+            x2 = path.poses[i+1][0]
+            y2 = path.poses[i+1][1]
+            distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
+            total_distance += distance
+        return total_distance
+
     def euclidean_dist_astar(self, index, goal_index):
         """
         Again, index and goal_index here are from the costmap itself
@@ -495,22 +508,22 @@ class ExplorationNode(Node):
         self.waypoint_publisher.publish(waypoint)
         time.sleep(3)
     
-    def check_aruco(self, data):
-        """
-        This function checks if there is an (recognisable) aruco in the image
-        input: data <- image variable
-        """
-        ap = argparse.ArgumentParser()
-        ap.add_argument("-t", "--type", type=str,
-	    default="DICT_ARUCO_ORIGINAL",
-	    help="type of ArUCo tag to detect")
-        args = vars(ap.parse_args())
-        if self.ARUCO_DICT.get(args["type"],None) is None:
-            sys.exit(0)
-        arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[args["type"]])
-        arucoParams = cv2.aruco.DetectorParameters_create()
-        (corners, ids, rejected) = cv2.aruco.detectMarkers(data, arucoDict, parameters=arucoParams)
-        return len(corners)>0
+    # def check_aruco(self, data):
+    #     """
+    #     This function checks if there is an (recognisable) aruco in the image
+    #     input: data <- image variable
+    #     """
+    #     ap = argparse.ArgumentParser()
+    #     ap.add_argument("-t", "--type", type=str,
+	#     default="DICT_ARUCO_ORIGINAL",
+	#     help="type of ArUCo tag to detect")
+    #     args = vars(ap.parse_args())
+    #     if self.ARUCO_DICT.get(args["type"],None) is None:
+    #         sys.exit(0)
+    #     arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[args["type"]])
+    #     arucoParams = cv2.aruco.DetectorParameters_create()
+    #     (corners, ids, rejected) = cv2.aruco.detectMarkers(data, arucoDict, parameters=arucoParams)
+    #     return len(corners)>0
 
     def get_frontiers(self):
         """
