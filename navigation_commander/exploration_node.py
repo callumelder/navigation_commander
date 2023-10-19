@@ -21,6 +21,11 @@ if (DEBUG_WITH_GRAPH):
     fig = plt.figure()
 
 class ExplorationNode(Node):
+    """The ROS2 node responsible for exploring the map, by running an exploration algorithm
+
+    Args:
+        Node (_type_): _description_
+    """
     def __init__(self):
         super().__init__(node_name='explorer')
 
@@ -95,9 +100,10 @@ class ExplorationNode(Node):
 
 
     def global_costmap_callback(self, msg):
-        """
-        Processes the data received from the cost map
-        Written by Isaac
+        """_summary_
+
+        Args:
+            msg (_type_): _description_
         """
         self.width = msg.info.width             #extracts width in grid points from costmap info data
         self.height = msg.info.height           #extracts height in grid points from costmap info data
@@ -128,20 +134,22 @@ class ExplorationNode(Node):
         self.dummy = 1
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
-        """
-        Process behaviour tree log messag data
-        Written by Callum
+        """callback function for retrieving the behaviour tree information
+
+        Args:
+            msg (BehaviorTreeLog): the message from the behaviour log tree topic
         """
         latest_event = msg.event_log.pop(-1)
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
 
     def pose_callback(self, msg):    #to get robots position in meters, for finding distance between it and frontiers
-        """
-        gets current pose of robot - u can compare this to the goal pose u want to send
+        """gets current pose of robot - u can compare this to the goal pose u want to send
         pose is in header_frame_id <- should be 'map' here
         this is from odometry
-        wiki.ros.org/amcl
+
+        Args:
+            msg (_type_): call back message of the pose
         """
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
@@ -149,8 +157,11 @@ class ExplorationNode(Node):
     
     def explore_map(self):
         """
-        Primary loop for exploring the map
-        Written by Callum
+        Primary loop for exploring the map. 
+        Continuously loops while there are still frontiers being found.
+        Ends when all frontiers are found (map complete).
+
+        Written by Callum and Isaac
         """
         # Make sure we have costmap information before proceeding
         while (self.dummy == None):
@@ -211,7 +222,8 @@ class ExplorationNode(Node):
     
     def wait_for_goal(self):
         """
-        Waits for goal to finish, breaking if stuck
+        Waits for goal to finish, if stuck, moves to next frontier
+
         Written by Callum
         """
         start_time = time.time()
@@ -233,9 +245,19 @@ class ExplorationNode(Node):
     
 
     def find_highest_frontier_density(self, frontier_map, kernel=12):
-        """
-        Finds coordinates of an area of size kernel that contains the most frontiers
-        Callum
+        """Iterates through the frontier map using a kernel, 
+        to sum up densities of frontiers over a threshold, storing the 
+        coordinates of the high density frontiers in a list
+        Then sorts the list by distance from the robot.
+
+        Written by Callum and Isaac
+
+        Args:
+            frontier_map (list): 2D map of all frontiers
+            kernel (int, optional): size of the kernel to sum frontiers. Defaults to 12.
+
+        Returns:
+            list: list of tuple coordinates of highest density frontiers ranked by distance from robot
         """
         self.get_logger().info('Finding highest frontier density coordinate...')
         if len(frontier_map) == 0:
@@ -271,20 +293,27 @@ class ExplorationNode(Node):
         return top_coordinates
     
     def calc_dist(self, point1, point2):
-        """
-        calculates euclidean distance between two points represented by tuples in form (x,y)
-        Written by Jasmine
+        """calculates euclidean distance between two points represented by tuples in form (x,y)
+
+        Args:
+            point1 (tuple): coordinate of first point
+            point2 (tuple): coordinate of second point
+
+        Returns:
+            float: distance between two coordinates
         """
         dx = point1[0] - point2[0]
         dy = point1[1] - point2[1]
         return (dx**2+dy**2)**0.5
     
-    def convert_to_waypoint(self, inspection_point):    #takes points in map grid reff to meters, I think???
-        """
-        Converts frontier to waypoint
-        Written by Jasmine
-        input: tuple of (x,y)
-        output: gives a target goal for the bot to reach
+    def convert_to_waypoint(self, inspection_point):
+        """Converts frontier to waypoint
+
+        Args:
+            inspection_point (tuple): coordinate of frontier
+
+        Returns:
+            <class 'tuple'>: gives a target goal for the bot to reach
         """
         self.get_logger().info('Converting waypoint...')
         inspection_pose = PoseStamped()
@@ -295,9 +324,13 @@ class ExplorationNode(Node):
     
     
     def send_goal_waypoint(self, waypoint):
-        """
-        Sends goal waypoint to Nav2
+        """Sends goal waypoint to goal pose topic, 
+        where Nav2 will handle the robot's routing and movement to the goal pose
+
         Written by Chen and Callum
+
+        Args:
+            waypoint (_type_): _description_
         """
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
@@ -305,10 +338,12 @@ class ExplorationNode(Node):
 
 
     def get_frontiers(self):
-        """
-        Adds newly found frontiers to the queue/stack
-        Returns a list of frontier points
+        """Adds newly found frontiers to the queue/stack
+        
         Written by Isaac
+
+        Returns:
+            list: 2D array frontier map
         """
         self.get_logger().info('Getting frontiers...')
         # Now let's generate a frontier map
@@ -399,8 +434,8 @@ class ExplorationNode(Node):
 
 
 def main(args=None):
-    """
-    Main function
+    """Creates threads to spin the node and to explore the map in parallel
+
     Written by Callum
     """
     rclpy.init(args=args)
