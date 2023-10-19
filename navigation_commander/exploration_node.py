@@ -171,6 +171,7 @@ class ExplorationNode(Node):
         self.grid_data_2D_exists = True # used to find out if robot gets to waypoint
 
         self.dummy = 1
+        self.graph = self.create_graph_from_map(msg)
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
@@ -190,6 +191,7 @@ class ExplorationNode(Node):
         """
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
+        self.robot_position_meters_tuple = (self.currentPose.position.x, self.currentPose.position.y)
     
     # def path_sub_callback(self,data):
     #     """
@@ -299,17 +301,18 @@ class ExplorationNode(Node):
     
     def create_graph_from_map(self, costmap_msg):
         graph = nx.Graph()
-        map_array = costmap_msg.grid_data_1D
+        map_array = self.grid_data_2D
         rows = costmap_msg.info.height
         cols = costmap_msg.info.width
         origin = costmap_msg.info.origin
         resolution = costmap_msg.info.resolution
         rows, cols = map_array.shape
-        for row in range(rows):
-            for col in range(cols):
+        i = 0
+        for col in range(cols):
+            for row in range(rows):
                 node_x = col*resolution + resolution / 2 + origin.position.x
                 node_y = row*resolution + resolution / 2 + origin.position.y
-                cost = map_array[row*cols+col]
+                cost = costmap_msg.data[i]
                 graph.add_node((node_x, node_y), cost=cost)
                 for dx in [-1,0,1]:
                     for dy in [-1,0,1]:
@@ -317,16 +320,16 @@ class ExplorationNode(Node):
                             continue
                         adjacent_x = node_x + dx*resolution
                         adjacent_y = node_y + dy*resolution
-
                         if (0<= adjacent_x<cols*resolution+origin.position.x and 
                             0<= adjacent_y<rows*resolution+origin.position.y):
                             adjacent_row = int((adjacent_y-origin.position.y)/resolution)
                             adjacent_col = int((adjacent_x-origin.position.x)/resolution)
-                            adjacent_cost = map.array[adjacent_row*cols+adjacent_col]
+                            adjacent_cost = costmap_msg.data[adjacent_row*cols+adjacent_col]
                             # This makes sure that edges are only added between current node that is NOT an obstacle
                             # and its adjacent node that is also NOT an obstacle (something is not an obstacle if
                             # the cost to traverse it is less than the lethal_cost in callback)
-                            if cost < self.lethal_cost and adjacent_cost < self.lethal_cost:
+                            # I also made it so that unknown areas are not able to be traversed
+                            if cost < self.lethal_cost and adjacent_cost < self.lethal_cost and cost >=0:
                                 graph.add_edge((node_x, node_y),(adjacent_x,adjacent_y), weight = adjacent_cost)
         return graph
     
@@ -334,36 +337,25 @@ class ExplorationNode(Node):
         distance  = nx.astar_path_length(graph, start_node, target_node, heuristic = self.heuristic, weight ="cost")
         return distance
     
+    def coord_to_node(self, graph, costmap_msg, coordinate):
+        origin = costmap_msg.info.origin
+        resolution = costmap_msg.info.resolution
+        col = int((coordinate[0] - origin.position.x) / resolution)
+        row = int((coordinate[1] - origin.position.y) / resolution)
+        node_x = col * resolution + resolution / 2 + origin.position.x
+        node_y = row * resolution + resolution / 2 + origin.position.y
+        if graph.has_node((node_x, node_y)):
+            cost = graph.nodes[(node_x, node_y)]['cost']
+            return (node_x, node_y, cost)
+        else:
+            # coordinate cannot be placed on a valid node
+            return None, None
+        
     def heuristic(self, a, b):
         (x1, y1) = a
         (x2,y2) = b
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
     
-    def update_graph_costs(self, graph, costmap_msg):
-        map_array = costmap_msg.data
-        resolution = costmap_msg.info.resolution
-        rows = costmap_msg.info.height
-        cols = costmap_msg.info.width
-        origin = costmap_msg.info.origin
-        for node, data in graph.nodes(data=True):
-            node_x, node_y = node
-            col = col = int((node_x - costmap_msg.info.origin.position.x) / costmap_msg.info.resolution)
-            row = int((node_y - costmap_msg.info.origin.position.y) / costmap_msg.info.resolution)
-            if 0 <= row < rows and 0 <= col < cols:
-                data['cost'] = map_array[row * cols + col]
-            else:
-                # node is outside costmap
-                data['cost'] = 100000
-            for dx in [-1,0,1]:
-                for dy in [-1,0,1]:
-                    if dx == 0 and dy ==0:
-                        continue
-                    adjacent_x = node_x + dx*resolution
-                    adjacent_y = node_y + dy*resolution
-                    if (0<= adjacent_x<cols*resolution+origin.position.x and 0<= adjacent_y<rows*resolution+origin.position.y):
-                        if data['cost'] > self.lethal_cost:
-                            graph.remove_edge((node_x, node_y),(adjacent_x,adjacent_y))
-
     def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
         Finds coordinates of an area of size kernel that contains the most frontiers
@@ -396,10 +388,9 @@ class ExplorationNode(Node):
     
         # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
         sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))
-
         top_coordinates = sorted_coordinates[:top_coordinate_num]
         top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
-
+        print(distance)
         return top_coordinates
     
     def calc_dist(self, point1, point2):
