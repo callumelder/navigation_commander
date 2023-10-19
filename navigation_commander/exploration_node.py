@@ -11,6 +11,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 from nav_msgs.msg import Path
+import networkx as nx #pip install networkx gg
 
 # from sensor_msgs.msg import Image # Image is the message type
 # from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
@@ -60,7 +61,7 @@ class ExplorationNode(Node):
         self.node_name = 'NavigateRecovery' # not sure, some kind of check to see if node as initialised
         self.current_status = 'IDLE'        # gets status from Nav2 behaviour tree
         self.currentPose = None             # store pose from pose Odom topic
-        self.path = None
+        self.graph = None
         
         # self.br = CvBridge() # used to convert between ROS and OpenCV images
         # self.current_frame = None
@@ -225,8 +226,8 @@ class ExplorationNode(Node):
         # initialize frontier map and coordinates
         self.frontier_coords = []                                                        
         self.frontier_map = self.get_frontiers()                                    
-        max_coordinates = self.find_highest_frontier_density(self.frontier_map)     
-        self.frontier_coords.extend(max_coordinates)                                    
+        max_coordinates = self.find_highest_frontier_density(self.frontier_map)
+        self.frontier_coords.extend(max_coordinates)
 
         while len(self.frontier_coords) > 0:
 
@@ -296,146 +297,72 @@ class ExplorationNode(Node):
             self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
     
-    def astar(self, start_index, goal_index):
-        """
-        pretty sure start_index and goal_index here are like actual costmap coordinates, no transformations or anything
-        Output: 
-        """
-        resolution = self.resolution
-        open_list = []
-        closed_list = set()
-        parents = dict()
-        g_costs = dict()
-        f_costs = dict()
-        g_costs[start_index] = 0
-        f_costs[start_index] = 0
-        start_cost = 0 + self.euclidean_dist_astar(start_index, goal_index)
-        open_list.append([start_index,start_cost])
-        shortest_path = []
-        path_found = False
-        while open_list:
-            open_list.sort(key = lambda x:x[1])
-            current_node = open_list.pop(0)[0]
-            closed_list.add(current_node)
-            if current_node == goal_index:
-                path_found = True
-                break
-            neighbors = self.find_neighbors(current_node,resolution)
-            for neighbor_index, step_cost in neighbors:
-                if neighbor_index in closed_list:
-                    continue
-                
-                g_cost = g_costs[current_node] + step_cost
-                h_cost = self.euclidean_dist_astar(neighbor_index,goal_index)
-                f_cost = g_cost + h_cost
+    def create_graph_from_map(self, costmap_msg):
+        graph = nx.Graph()
+        map_array = costmap_msg.grid_data_1D
+        rows = costmap_msg.info.height
+        cols = costmap_msg.info.width
+        origin = costmap_msg.info.origin
+        resolution = costmap_msg.info.resolution
+        rows, cols = map_array.shape
+        for row in range(rows):
+            for col in range(cols):
+                node_x = col*resolution + resolution / 2 + origin.position.x
+                node_y = row*resolution + resolution / 2 + origin.position.y
+                cost = map_array[row*cols+col]
+                graph.add_node((node_x, node_y), cost=cost)
+                for dx in [-1,0,1]:
+                    for dy in [-1,0,1]:
+                        if dx == 0 and dy == 0:
+                            continue
+                        adjacent_x = node_x + dx*resolution
+                        adjacent_y = node_y + dy*resolution
 
-                in_open_list = False
-                for idx, element in enumerate(open_list):
-                    if element[0] == neighbor_index:
-                        in_open_list= True
-                        break
-                
-                if in_open_list:
-                    if f_cost < f_costs[neighbor_index]:
-                        g_costs[neighbor_index] = g_cost
-                        f_costs[neighbor_index] = f_cost
-                        parents[neighbor_index] = current_node
-                        open_list[idx] = [neighbor_index, f_cost]
-                else:
-                    g_costs[neighbor_index] = g_cost
-                    f_costs[neighbor_index] = f_cost
-                    parents[neighbor_index] = current_node
-                    open_list.append([neighbor_index, f_cost])
-        
-        if not path_found:
-            return shortest_path
-        if path_found:
-            node = goal_index
-            shortest_path.append(goal_index)
-            while node!= start_index:
-                shortest_path.append(node)
-                node = parents[node]
-        # reverse list
-        shortest_path = shortest_path[::-1]
-        return shortest_path, None
+                        if (0<= adjacent_x<cols*resolution+origin.position.x and 
+                            0<= adjacent_y<rows*resolution+origin.position.y):
+                            adjacent_row = int((adjacent_y-origin.position.y)/resolution)
+                            adjacent_col = int((adjacent_x-origin.position.x)/resolution)
+                            adjacent_cost = map.array[adjacent_row*cols+adjacent_col]
+                            # This makes sure that edges are only added between current node that is NOT an obstacle
+                            # and its adjacent node that is also NOT an obstacle (something is not an obstacle if
+                            # the cost to traverse it is less than the lethal_cost in callback)
+                            if cost < self.lethal_cost and adjacent_cost < self.lethal_cost:
+                                graph.add_edge((node_x, node_y),(adjacent_x,adjacent_y), weight = adjacent_cost)
+        return graph
     
-    def path_dist(self,path):
-        """
-        Calculates distance in a path
-        """
-        for i in range(len(path.poses)-1):
-            x1 = path.poses[i][0]
-            y1 = path.poses[i][1]
-            x2 = path.poses[i+1][0]
-            y2 = path.poses[i+1][1]
-            distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
-            total_distance += distance
-        return total_distance
-
-    def euclidean_dist_astar(self, index, goal_index):
-        """
-        Again, index and goal_index here are from the costmap itself
-        im gonna convert them again
-        """
-        index_x = index % self.width
-        index_y = int(index/self.width)
-        goal_x = goal_index % self.width
-        goal_y = int(goal_index/self.width)
-
-        distance = (index_x - goal_x)**2 + (index_y - goal_y)**2
-        return sqrt(distance)
+    def get_theoretical_path_length(self, graph, start_node, target_node):
+        distance  = nx.astar_path_length(graph, start_node, target_node, heuristic = self.heuristic, weight ="cost")
+        return distance
     
-    def find_neighbors(self, index, orthogonal_step_cost):
-        """
-        Index is supposed to be its original costmap value here I'm pretty sure.
-        https://github.com/SakshayMahna/Robotics-Playground/blob/main/turtlebot3_ws/src/global_path_planning/scripts/algorithms/astar.py#L51
-        """
-        lethal_cost = self.lethal_cost
-        costmap = self.costmap
-        width = self.width
-        height = self.height
-        neighbors = []
-        diagonal_step_cost = orthogonal_step_cost*sqrt(2)
-        upper = index - width
-        if upper > 0:
-            if costmap[upper] < lethal_cost:
-                step_cost = orthogonal_step_cost + costmap[upper]/255
-                neighbors.append([upper, step_cost])
-        left = index - 1
-        if left%width > 0:
-            if costmap[left]<lethal_cost:
-                step_cost = orthogonal_step_cost + costmap[left]/255
-                neighbors.append([left, step_cost])
-        upper_left = index - width - 1
-        if upper_left > 0 and upper_left%width > 0:
-            if costmap[upper_left] < lethal_cost:
-                step_cost = diagonal_step_cost + costmap[upper_left]/255
-                neighbors.append([index - width - 1, step_cost])
-        upper_right = index - width + 1
-        if upper_right > 0 and (upper_right) % width != (width - 1):
-            if costmap[upper_right] < lethal_cost:
-                step_cost = diagonal_step_cost + costmap[upper_right]/255
-                neighbors.append([upper_right, step_cost])
-        right = index + 1
-        if right % width != (width + 1):
-            if costmap[right] < lethal_cost:
-                step_cost = orthogonal_step_cost + costmap[right]/255
-                neighbors.append([right, step_cost])
-        lower_left = index + width
-        if lower_left <= height*width and lower_left%width!=0:
-            if costmap[lower_left] < lethal_cost:
-                step_cost = diagonal_step_cost + costmap[lower_left]/255
-                neighbors.append([lower_left, step_cost])
-        lower = index + width
-        if lower<= height*width:
-            if costmap[lower] < lethal_cost:
-                step_cost = orthogonal_step_cost + costmap[lower]/255
-                neighbors.append([lower,step_cost])
-        lower_right = index + width + 1
-        if (lower_right) <= height*width and lower_right%width!= (width -1):
-            step_cost = diagonal_step_cost + costmap[lower_right]/255
-            neighbors.append([lower_right, step_cost])
-        return neighbors
+    def heuristic(self, a, b):
+        (x1, y1) = a
+        (x2,y2) = b
+        return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+    
+    def update_graph_costs(self, graph, costmap_msg):
+        map_array = costmap_msg.data
+        resolution = costmap_msg.info.resolution
+        rows = costmap_msg.info.height
+        cols = costmap_msg.info.width
+        origin = costmap_msg.info.origin
+        for node, data in graph.nodes(data=True):
+            node_x, node_y = node
+            col = col = int((node_x - costmap_msg.info.origin.position.x) / costmap_msg.info.resolution)
+            row = int((node_y - costmap_msg.info.origin.position.y) / costmap_msg.info.resolution)
+            if 0 <= row < rows and 0 <= col < cols:
+                data['cost'] = map_array[row * cols + col]
+            else:
+                # node is outside costmap
+                data['cost'] = 100000
+            for dx in [-1,0,1]:
+                for dy in [-1,0,1]:
+                    if dx == 0 and dy ==0:
+                        continue
+                    adjacent_x = node_x + dx*resolution
+                    adjacent_y = node_y + dy*resolution
+                    if (0<= adjacent_x<cols*resolution+origin.position.x and 0<= adjacent_y<rows*resolution+origin.position.y):
+                        if data['cost'] > self.lethal_cost:
+                            graph.remove_edge((node_x, node_y),(adjacent_x,adjacent_y))
 
     def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
@@ -449,8 +376,8 @@ class ExplorationNode(Node):
         half_kernel = int(kernel/2)
         coordinate_density_distance_pairs = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
-        top_coordinate_num = 3                                  
-        threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)            
+        top_coordinate_num = 3
+        threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)
         robot_position = self.robot_position_meters
         for row in range(rows):
             for col in range(cols):
