@@ -54,7 +54,7 @@ class ExplorationNode(Node):
         self.grid_data_1D = None    #initialise 1D array for data published by global costmap 
         self.grid_data_2D = None    #initialise 2D array for above data to be shaped into costmap size
         self.grid_data_2D_exists = False   #so we can check if the array has been filled, checking if == None dosen't work
-        self.frontier_map = np.zeros((self.width, self.height)) #initialise grid for frontiers to be added
+        self.frontier_map = np.zeros((self.height, self.width)) #initialise grid for frontiers to be added
 
         self.last_coordinate = None
 
@@ -171,7 +171,11 @@ class ExplorationNode(Node):
         self.grid_data_2D_exists = True # used to find out if robot gets to waypoint
 
         self.dummy = 1
-        self.graph = self.create_graph_from_map(msg)
+        graph = self.generate_2D_map_graph(self.grid_data_2D)
+        # start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array([20,30]) - np.array(node)))
+        # goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array([50,60]) - np.array(node)))
+        # distance = nx.astar_path_length(graph, start_node, goal_node, heuristic = self.heuristic, weight ="cost")
+        # print(distance)
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
@@ -258,6 +262,7 @@ class ExplorationNode(Node):
                 except:
                     self.get_logger().warning('Aborting graphing effort...')
 
+            
             # move to frontier
             self.send_goal_waypoint(waypoint)
             self.wait_for_goal()
@@ -299,62 +304,62 @@ class ExplorationNode(Node):
             self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
     
-    def create_graph_from_map(self, costmap_msg):
-        graph = nx.Graph()
-        map_array = self.grid_data_2D
-        rows = costmap_msg.info.height
-        cols = costmap_msg.info.width
-        origin = costmap_msg.info.origin
-        resolution = costmap_msg.info.resolution
-        rows, cols = map_array.shape
-        i = 0
-        for col in range(cols):
-            for row in range(rows):
-                node_x = col*resolution + resolution / 2 + origin.position.x
-                node_y = row*resolution + resolution / 2 + origin.position.y
-                cost = costmap_msg.data[i]
-                graph.add_node((node_x, node_y), cost=cost)
-                for dx in [-1,0,1]:
-                    for dy in [-1,0,1]:
-                        if dx == 0 and dy == 0:
-                            continue
-                        adjacent_x = node_x + dx*resolution
-                        adjacent_y = node_y + dy*resolution
-                        if (0<= adjacent_x<cols*resolution+origin.position.x and 
-                            0<= adjacent_y<rows*resolution+origin.position.y):
-                            adjacent_row = int((adjacent_y-origin.position.y)/resolution)
-                            adjacent_col = int((adjacent_x-origin.position.x)/resolution)
-                            adjacent_cost = costmap_msg.data[adjacent_row*cols+adjacent_col]
-                            # This makes sure that edges are only added between current node that is NOT an obstacle
-                            # and its adjacent node that is also NOT an obstacle (something is not an obstacle if
-                            # the cost to traverse it is less than the lethal_cost in callback)
-                            # I also made it so that unknown areas are not able to be traversed
-                            if cost < self.lethal_cost and adjacent_cost < self.lethal_cost and cost >=0:
-                                graph.add_edge((node_x, node_y),(adjacent_x,adjacent_y), weight = adjacent_cost)
-        return graph
+    def generate_2D_map_graph(self, map_array):
+        G = nx.Graph()
+        for i in range(map_array.shape[0]):
+            for j in range(map_array.shape[1]):
+                if self.is_accessible((i, j), map_array):
+                    G.add_node((i, j))
+                    neighbors = [(i-1, j), (i+1, j), (i, j-1), (i, j+1)]  # Assuming 4-connected neighbors
+                    for neighbor in neighbors:
+                        if self.is_accessible(neighbor, map_array):
+                            G.add_edge((i, j), neighbor, weight=1)  # You can customize the weight as needed
+        return G
     
-    def get_theoretical_path_length(self, graph, start_node, target_node):
-        distance  = nx.astar_path_length(graph, start_node, target_node, heuristic = self.heuristic, weight ="cost")
+    def is_accessible(self,coord, map_array):
+        x, y = coord
+        return 0 <= x < map_array.shape[0] and 0 <= y < map_array.shape[1] and map_array[x, y] != 100 and map_array[x, y] != -1
+
+    def get_theoretical_path_length(self, start_real_coord, goal_real_coord, map_array, resolution):
+        start_coord = self.real_world_to_map_coord(start_real_coord, resolution)
+        goal_coord = self.real_world_to_map_coord(goal_real_coord, resolution)
+
+        graph = self.generate_2D_map_graph(map_array, resolution)
+
+        # Find the nearest accessible nodes to the provided map coordinates
+        start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(start_coord) - np.array(node)))
+        goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(goal_coord) - np.array(node)))
+        distance  = nx.astar_path_length(graph, start_node, goal_node, heuristic = self.heuristic, weight ="cost")
         return distance
     
-    def coord_to_node(self, graph, costmap_msg, coordinate):
-        origin = costmap_msg.info.origin
-        resolution = costmap_msg.info.resolution
-        col = int((coordinate[0] - origin.position.x) / resolution)
-        row = int((coordinate[1] - origin.position.y) / resolution)
-        node_x = col * resolution + resolution / 2 + origin.position.x
-        node_y = row * resolution + resolution / 2 + origin.position.y
-        if graph.has_node((node_x, node_y)):
-            cost = graph.nodes[(node_x, node_y)]['cost']
-            return (node_x, node_y, cost)
-        else:
-            # coordinate cannot be placed on a valid node
-            return None, None
-        
+    def real_world_to_map_coord(self, real_coord, resolution):
+        x, y = real_coord
+        map_x = int(x/resolution)
+        map_y = int(y/resolution)
+        return map_x, map_y
+    
     def heuristic(self, a, b):
         (x1, y1) = a
         (x2,y2) = b
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
+    
+    def find_path_on_map(self, start_real_coord, goal_real_coord, map_array, resolution):
+        # Convert real-world coordinates to map coordinates
+        start_coord = self.real_world_to_map_coord(start_real_coord, resolution)
+        goal_coord = self.real_world_to_map_coord(goal_real_coord, resolution)
+
+        graph = self.generate_2D_map_graph(map_array, resolution)
+
+        # Find the nearest accessible nodes to the provided map coordinates
+        start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(start_coord) - np.array(node)))
+        goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(goal_coord) - np.array(node)))
+
+        path = nx.astar_path(graph, start_node, goal_node)
+        
+        # Convert the path back to real-world coordinates
+        path_real_coords = [self.map_to_real_world_coord(node, resolution) for node in path]
+        
+        return path_real_coords
     
     def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
