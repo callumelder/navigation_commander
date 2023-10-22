@@ -121,7 +121,7 @@ class ExplorationNode(Node):
         #subscriber for images
         self.image_sub = self.create_subscription(
             Image,
-            '/image',
+            '/intel_realsense_r200_depth/image_raw',
             self.image_callback,
             10
         )
@@ -130,8 +130,6 @@ class ExplorationNode(Node):
         self.arucoParams = cv.aruco.DetectorParameters()
         self.intrinsic_camera = np.array(((485.477854,0,320.632732),(0,488.026166,262.581355),(0,0,1)))
         self.distortion = np.array((0.160892,-0.243927,-0.000055,-0.000948,0))
-
-
 
     def global_costmap_callback(self, msg):
         """_summary_
@@ -356,21 +354,38 @@ class ExplorationNode(Node):
 
         return top_coordinates
     
-    def pose_estimation(frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
+    def pose_estimation(self,frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
         parameters = cv.aruco.DetectorParameters()
-        corners, ids, rejected = cv.aruco.detectMarkers(gray, aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
-        
+        corners, ids, rejected = cv.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
         if len(corners)>0:
             for i in range(0, len(ids)):
                 #rvec = rotation vector , tvec = translation vector , markerpoints for aruco detection
                 #rvec and tvec most important 
                 #http://amroamroamro.github.io/mexopencv/matlab/cv.estimatePoseSingleMarkers.html
-                rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, matrix_coefficients, distortion_coefficients)
+                rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, cameraMatrix=matrix_coefficients,  distCoeffs=distortion_coefficients)
             # here do we draw them? localise point in map idk
-        return 0
+        else:
+            rvec, tvec, markerPoints = 0,0,0
+        return rvec
         
+    # def check_aruco(self, data):
+    #     """
+    #     This function checks if there is an (recognisable) aruco in the image
+    #     input: data <- image variable
+    #     """
+    #     ap = argparse.ArgumentParser()
+    #     ap.add_argument("-t", "--type", type=str,
+	#     default="DICT_ARUCO_ORIGINAL",
+	#     help="type of ArUCo tag to detect")
+    #     args = vars(ap.parse_args())
+    #     if self.ARUCO_DICT.get(args["type"],None) is None:
+    #         sys.exit(0)
+    #     arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[args["type"]])
+    #     arucoParams = cv2.aruco.DetectorParameters_create()
+    #     (corners, ids, rejected) = cv2.aruco.detectMarkers(data, arucoDict, parameters=arucoParams)
+    #     return len(corners)>0
 
     def calc_dist(self, point1, point2):
         """calculates euclidean distance between two points represented by tuples in form (x,y)
