@@ -360,12 +360,13 @@ class ExplorationNode(Node):
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
         parameters = cv.aruco.DetectorParameters()
-        corners, ids, rejected = cv.aruco.detectMarkers(gray, cv.aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
+        corners, ids, rejected = cv.aruco.detectMarkers(gray, aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
         
         if len(corners)>0:
             for i in range(0, len(ids)):
                 #rvec = rotation vector , tvec = translation vector , markerpoints for aruco detection
                 #rvec and tvec most important 
+                #http://amroamroamro.github.io/mexopencv/matlab/cv.estimatePoseSingleMarkers.html
                 rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, matrix_coefficients, distortion_coefficients)
             # here do we draw them? localise point in map idk
         return 0
@@ -392,7 +393,7 @@ class ExplorationNode(Node):
             inspection_point (tuple): coordinate of frontier
 
         Returns:
-            <class 'tuple'>: gives a target goal for the bot to reach
+            inspection_pose (PoseStamped Pose): gives a target goal for the bot to reach
         """
         self.get_logger().info('Converting waypoint...')
         inspection_pose = PoseStamped()
