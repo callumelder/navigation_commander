@@ -289,11 +289,10 @@ class ExplorationNode(Node):
         coordinate_dictionary = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
         top_coordinate_num = 3                                  
-        threshold = int(kernel*kernel*self.IS_FRONTIER_VALUE*0.05) 
-        # threshold = 0           
+        threshold = int(kernel*kernel*self.IS_FRONTIER_VALUE*0.1)         
         robot_position = self.robot_position_meters
-        for row in range(rows):
-            for col in range(cols):
+        for row in range(0, rows, kernel):
+            for col in range(0, cols, kernel):
                 try:
                     sub_map = frontier_map[row-half_kernel:row+half_kernel, col-half_kernel:col+half_kernel]
                     density = np.sum(sub_map)
