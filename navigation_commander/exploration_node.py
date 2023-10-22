@@ -286,7 +286,7 @@ class ExplorationNode(Node):
             return (0, 0)
         
         half_kernel = int(kernel/2)
-        coordinate_density_distance_pairs = {}
+        coordinate_dictionary = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
         top_coordinate_num = 3                                  
         threshold = int(kernel*kernel*self.IS_FRONTIER_VALUE*0.05) 
@@ -302,16 +302,17 @@ class ExplorationNode(Node):
                         distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   
                         if distance < self.RADIUS_THRESHHOLD:   
                             distance = 100 # set large distance to move to end of list
-                        coordinate = (self.x_2D[row][col], self.y_2D[row][col], density, distance)  # sets up a tuple of x,y,density and distance 
-                        coordinate_density_distance_pairs[coordinate] = None
+                        coordinate = (self.x_2D[row][col], self.y_2D[row][col])
+                        coordinate_dictionary[coordinate] = (density, distance)
                 except:
                     continue
     
         # sort coordinates so that the closet frontier (but further then 1 meter) of the heigest density is on the top of the list
-        sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))
+        sorted_coordinate_dictionary = sorted(coordinate_dictionary.items(), key=lambda item: item[1][1])
+
+        sorted_coordinates = [key for key, _ in sorted_coordinate_dictionary]
 
         top_coordinates = sorted_coordinates[:top_coordinate_num]
-        top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
 
         return top_coordinates
     
