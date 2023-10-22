@@ -11,6 +11,7 @@ from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
 from nav_msgs.msg import Path
+from scipy.spatial.transform import Rotation
 
 import numpy as np
 import threading
@@ -210,10 +211,14 @@ class ExplorationNode(Node):
         """
         self.current_frame = self.br.imgmsg_to_cv2(data)
         output = self.get_id(self.current_frame, self.ARUCO_DICT[self.aruco_type])
+        transform_matrix = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
+        tag_pos = self.transform_coordinates(transform_matrix, [self.currentPose.position.x, self.currentPose.position.y, 0])
         # Print Aruco ID if it is in the frame
         if output != None:
             print(output)
-
+        # Print Tag position if it is in the frame
+        if transform_matrix != None:
+            print(tag_pos)
 
     def explore_map(self):
         """
@@ -374,27 +379,23 @@ class ExplorationNode(Node):
                 #rvec and tvec most important 
                 #http://amroamroamro.github.io/mexopencv/matlab/cv.estimatePoseSingleMarkers.html
                 rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, cameraMatrix=matrix_coefficients,  distCoeffs=distortion_coefficients)
-            # here do we draw them? localise point in map idk
+                transformation_matrix = self.transformation_matrix(rvec, tvec)
         else:
-            rvec, tvec, markerPoints = 0,0,0
-        return rvec, tvec
-        
-    # def check_aruco(self, data):
-    #     """
-    #     This function checks if there is an (recognisable) aruco in the image
-    #     input: data <- image variable
-    #     """
-    #     ap = argparse.ArgumentParser()
-    #     ap.add_argument("-t", "--type", type=str,
-	#     default="DICT_ARUCO_ORIGINAL",
-	#     help="type of ArUCo tag to detect")
-    #     args = vars(ap.parse_args())
-    #     if self.ARUCO_DICT.get(args["type"],None) is None:
-    #         sys.exit(0)
-    #     arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[args["type"]])
-    #     arucoParams = cv2.aruco.DetectorParameters_create()
-    #     (corners, ids, rejected) = cv2.aruco.detectMarkers(data, arucoDict, parameters=arucoParams)
-    #     return len(corners)>0
+            transformation_matrix = None
+        return transformation_matrix
+    
+    def transformation_matrix(self, rotation_vector, translation_vector):
+        rotation = Rotation.from_rotvec(rotation_vector)
+        transformation_matrix = np.eye(4)
+        transformation_matrix[:3,:3] = rotation.as_matrix()
+        transformation_matrix[:3,3] = translation_vector
+        return transformation_matrix
+    
+    def transform_coordinates(self, tag_to_cam_matrix, robot_pose_matrix):
+        cam_to_bot_matrix = np.linalg.inv(robot_pose_matrix)
+        tag_to_bot_matrix = np.dot(tag_to_cam_matrix, cam_to_bot_matrix)
+        tag_position = tag_to_bot_matrix[:3, 3]
+        return tag_position
 
     def calc_dist(self, point1, point2):
         """calculates euclidean distance between two points represented by tuples in form (x,y)
