@@ -68,27 +68,10 @@ class ExplorationNode(Node):
 
 
         # self.ARUCO_DICT = {
-	    #     "DICT_4X4_50": cv2.aruco.DICT_4X4_50,
-	    #     "DICT_4X4_100": cv2.aruco.DICT_4X4_100,
-	    #     "DICT_4X4_250": cv2.aruco.DICT_4X4_250,
-	    #     "DICT_4X4_1000": cv2.aruco.DICT_4X4_1000,
-	    #     "DICT_5X5_50": cv2.aruco.DICT_5X5_50,
-	    #     "DICT_5X5_100": cv2.aruco.DICT_5X5_100,
-	    #     "DICT_5X5_250": cv2.aruco.DICT_5X5_250,
-	    #     "DICT_5X5_1000": cv2.aruco.DICT_5X5_1000,
 	    #     "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
 	    #     "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
 	    #     "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-	    #     "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000,
-	    #     "DICT_7X7_50": cv2.aruco.DICT_7X7_50,
-	    #     "DICT_7X7_100": cv2.aruco.DICT_7X7_100,
-	    #     "DICT_7X7_250": cv2.aruco.DICT_7X7_250,
-	    #     "DICT_7X7_1000": cv2.aruco.DICT_7X7_1000,
-	    #     "DICT_ARUCO_ORIGINAL": cv2.aruco.DICT_ARUCO_ORIGINAL,
-	    #     "DICT_APRILTAG_16h5": cv2.aruco.DICT_APRILTAG_16h5,
-	    #     "DICT_APRILTAG_25h9": cv2.aruco.DICT_APRILTAG_25h9,
-	    #     "DICT_APRILTAG_36h10": cv2.aruco.DICT_APRILTAG_36h10,
-	    #     "DICT_APRILTAG_36h11": cv2.aruco.DICT_APRILTAG_36h11
+	    #     "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000
         # }
 
         # subscribe to costmap, used to find frontiers
@@ -137,6 +120,8 @@ class ExplorationNode(Node):
         #     10
         # )
 
+        # publishpoint
+
 
     def global_costmap_callback(self, msg):
         """
@@ -166,16 +151,25 @@ class ExplorationNode(Node):
 
         self.x_2D, self.y_2D = np.meshgrid(x,y) # making a mesh for displaying in debug graph
 
+        # here it follows that x_in_grid_cells = x_in_meters - self.origin[0] / self.resolution*self.width
+        # likewise, y_in_grid_cells = y_in_meters - self.origin[1] / self.resolution*self.height
+        # all of the information is stored in self.x_2D and self.y_2D in meters
+
+
         # Convert 1D data into a grid, note: this is in grid reference, not meters
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
         self.grid_data_2D_exists = True # used to find out if robot gets to waypoint
 
         self.dummy = 1
-        graph = self.generate_2D_map_graph(self.grid_data_2D)
-        # start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array([20,30]) - np.array(node)))
-        # goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array([50,60]) - np.array(node)))
-        # distance = nx.astar_path_length(graph, start_node, goal_node, heuristic = self.heuristic, weight ="cost")
-        # print(distance)
+
+        # self.graph = self.generate_2D_map_graph(self.grid_data_2D)
+        # ref = self.coord_to_grid_ref(self.robot_position_meters)
+        # self.start_node = self.grid_ref_to_node(ref,self.graph)
+        # print(start_node)
+        # goal_ref = self.coord_to_grid_ref((4.5,3.4))
+        # goal_node = self.grid_ref_to_node(goal_ref, self.graph)
+        # print(goal_node)
+        # print(self.get_theoretical_path_length(start_node, goal_node,self.graph))
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """
@@ -270,7 +264,6 @@ class ExplorationNode(Node):
             self.frontier_coords.clear()
 
             max_coordinates = self.find_highest_frontier_density(self.frontier_map)
-
             if (len(max_coordinates) == 0): #check to see if their are any more frontiers
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
                 break
@@ -280,8 +273,7 @@ class ExplorationNode(Node):
             self.last_coordinate = self.frontier_coord
 
         self.get_logger().info('Map complete!')
-    
-    
+ 
     def wait_for_goal(self):
         """
         Waits for goal to finish, breaking if stuck
@@ -304,7 +296,36 @@ class ExplorationNode(Node):
             self.get_logger().info('Waiting for goal to finish...')
             time.sleep(3)
     
+    def coord_to_grid_ref(self, coord2D):
+        x, y = coord2D
+        # here it follows that x_in_grid_cells = x_in_meters - self.origin[0] / self.resolution*self.width
+        # likewise, y_in_grid_cells = y_in_meters - self.origin[1] / self.resolution*self.height
+        # all of the information is stored in self.x_2D and self.y_2D in meters
+        x_in_grid_cells = x - self.origin[0] / self.resolution*self.width
+        y_in_grid_cells = y - self.origin[1] / self.resolution*self.height
+        #print(y_in_grid_cells)
+        return x_in_grid_cells, y_in_grid_cells
+    
+
+    def grid_ref_to_node(self, grid_ref, graph):
+        x, y = grid_ref
+        target_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array([x,y]) - np.array(node)))
+        return target_node
+
     def generate_2D_map_graph(self, map_array):
+        """
+        Make a networkx graph from a 2D map array - 2D map array contains numbers -1 and 0 - 100
+        Each node in the graph represents an item of that 2d map array in [row][col] with node (row, col)
+        Each (row, col) node is in a list <- this is the Graph object
+        A normal node has 4 edges, one for each neighbour, connecting it to the other nodes around it
+        If the node is an obstacle or is unknown as shown by the 2D map array it will not have any edges 
+        connecting to it
+
+        Input
+        2D numpy array
+        Output
+        Networkx Graph
+        """
         G = nx.Graph()
         for i in range(map_array.shape[0]):
             for j in range(map_array.shape[1]):
@@ -313,54 +334,29 @@ class ExplorationNode(Node):
                     neighbors = [(i-1, j), (i+1, j), (i, j-1), (i, j+1)]  # Assuming 4-connected neighbors
                     for neighbor in neighbors:
                         if self.is_accessible(neighbor, map_array):
-                            G.add_edge((i, j), neighbor, weight=1)  # You can customize the weight as needed
+                            G.add_edge((i, j), neighbor, weight=1)
         return G
     
     def is_accessible(self,coord, map_array):
         x, y = coord
         return 0 <= x < map_array.shape[0] and 0 <= y < map_array.shape[1] and map_array[x, y] != 100 and map_array[x, y] != -1
 
-    def get_theoretical_path_length(self, start_real_coord, goal_real_coord, map_array, resolution):
-        start_coord = self.real_world_to_map_coord(start_real_coord, resolution)
-        goal_coord = self.real_world_to_map_coord(goal_real_coord, resolution)
+    def get_theoretical_path_length(self, start_node, goal_node, graph):
+        """
+        Raises a NetworkXNoPath if no path exists between start_node and goal_node
+        """
+        path = nx.astar_path(graph, start_node,goal_node,heuristic=self.heuristic,weight= 'weight')
+        distance = len(path)
+        if path == nx.NetworkXNoPath:
+            return 1000000000000000000
+        else:
+            return distance
 
-        graph = self.generate_2D_map_graph(map_array, resolution)
-
-        # Find the nearest accessible nodes to the provided map coordinates
-        start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(start_coord) - np.array(node)))
-        goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(goal_coord) - np.array(node)))
-        distance  = nx.astar_path_length(graph, start_node, goal_node, heuristic = self.heuristic, weight ="cost")
-        return distance
-    
-    def real_world_to_map_coord(self, real_coord, resolution):
-        x, y = real_coord
-        map_x = int(x/resolution)
-        map_y = int(y/resolution)
-        return map_x, map_y
-    
     def heuristic(self, a, b):
-        (x1, y1) = a
+        (x1,y1) = a
         (x2,y2) = b
         return ((x1 - x2) ** 2 + (y1 - y2) ** 2) ** 0.5
-    
-    def find_path_on_map(self, start_real_coord, goal_real_coord, map_array, resolution):
-        # Convert real-world coordinates to map coordinates
-        start_coord = self.real_world_to_map_coord(start_real_coord, resolution)
-        goal_coord = self.real_world_to_map_coord(goal_real_coord, resolution)
-
-        graph = self.generate_2D_map_graph(map_array, resolution)
-
-        # Find the nearest accessible nodes to the provided map coordinates
-        start_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(start_coord) - np.array(node)))
-        goal_node = min(graph.nodes, key=lambda node: np.linalg.norm(np.array(goal_coord) - np.array(node)))
-
-        path = nx.astar_path(graph, start_node, goal_node)
-        
-        # Convert the path back to real-world coordinates
-        path_real_coords = [self.map_to_real_world_coord(node, resolution) for node in path]
-        
-        return path_real_coords
-    
+      
     def find_highest_frontier_density(self, frontier_map, kernel=12):
         """
         Finds coordinates of an area of size kernel that contains the most frontiers
@@ -373,7 +369,7 @@ class ExplorationNode(Node):
         half_kernel = int(kernel/2)
         coordinate_density_distance_pairs = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
-        top_coordinate_num = 3
+        top_coordinate_num = 60
         threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)
         robot_position = self.robot_position_meters
         for row in range(rows):
@@ -395,6 +391,19 @@ class ExplorationNode(Node):
         sorted_coordinates = sorted(coordinate_density_distance_pairs.keys(), key=lambda coord: (coord[3], -coord[2]))
         top_coordinates = sorted_coordinates[:top_coordinate_num]
         top_coordinates = [(coordinate[0], coordinate[1])  for coordinate in top_coordinates]
+        graph = self.generate_2D_map_graph(self.grid_data_2D)
+        ref = self.coord_to_grid_ref(self.robot_position_meters)
+        start_node = self.grid_ref_to_node(ref,graph)
+        goal_node = self.grid_ref_to_node(self.coord_to_grid_ref(top_coordinates[0]),graph)
+        #cost = nx.astar_path_length(graph,start_node,goal_node,heuristic=self.heuristic,weight='weight')
+        print(graph.edges)
+        coord_with_cost = []
+        # for c in top_coordinates:
+        #     goal_ref = self.coord_to_grid_ref(c)
+        #     goal_node = self.grid_ref_to_node(goal_ref, graph)
+        #     cost = self.get_theoretical_path_length(start_node,goal_node,graph)
+        #     coord_with_cost.append((c,cost))
+        # sorted_c_with_cost = sorted(coord_with_cost, key=lambda item: item[1])
         print(distance)
         return top_coordinates
     
@@ -420,7 +429,6 @@ class ExplorationNode(Node):
         inspection_pose.pose.position.x = float(inspection_point[0])
         inspection_pose.pose.position.y = float(inspection_point[1])
         return inspection_pose
-    
     
     def send_goal_waypoint(self, waypoint):
         """
