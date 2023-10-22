@@ -112,8 +112,6 @@ class ExplorationNode(Node):
         )
 
         self.br = CvBridge() # used to convert between ROS and OpenCV images
-        self.current_frame = None
-
         self.ARUCO_DICT = {
 	        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
 	        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
@@ -132,9 +130,6 @@ class ExplorationNode(Node):
         self.arucoParams = cv2.aruco.DetectorParameters_create()
         self.intrinsic_camera = np.array(((485.477854,0,320.632732),(0,488.026166,262.581355),(0,0,1)))
         self.distortion = np.array((0.160892,-0.243927,-0.000055,-0.000948,0))
-        cap = cv2.VideoCapture(0)
-        cap.set(cv2.CAP_PROP_FRAME_WIDTH,1280)
-        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
 
 
 
@@ -269,8 +264,12 @@ class ExplorationNode(Node):
             self.wait_for_goal()
 
             self.frontier_coords.clear()
-
             max_coordinates = self.find_highest_frontier_density(self.frontier_map)
+
+            #Camera
+            output = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
+            # write location to map?
+            print(output)
 
             if (len(max_coordinates) == 0): #check to see if their are any more frontiers
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
