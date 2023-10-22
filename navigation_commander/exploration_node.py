@@ -210,7 +210,8 @@ class ExplorationNode(Node):
         """
         self.current_frame = self.br.imgmsg_to_cv2(data)
         output = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
-        print(output)
+        if output != None:
+            print(output)
 
 
     def explore_map(self):
