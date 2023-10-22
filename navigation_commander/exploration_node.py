@@ -34,7 +34,7 @@ class ExplorationNode(Node):
         # variables
         self.IS_FRONTIER_VALUE = 101    #value to represent frontier as it will display red in rvis
         self.IS_UNKNOWN_VALUE = -1      #value used by Nav2 to represent unknow cell
-        self.THRESHHOLD_VALUE = 20      #values above -1 and below this are counted as known free space by get_frontiers
+        self.THRESHHOLD_VALUE = 99      #values above -1 and below this are counted as known free space by get_frontiers
         self.RADIUS_THRESHHOLD = 1.5      #radius arround robot for frontiers to be excluded, in meters
 
         self.dummy = None
@@ -266,7 +266,7 @@ class ExplorationNode(Node):
             time.sleep(3)
     
 
-    def find_highest_frontier_density(self, frontier_map, kernel=12):
+    def find_highest_frontier_density(self, frontier_map, kernel=5):
         """Iterates through the frontier map using a kernel, 
         to sum up densities of frontiers over a threshold, storing the 
         coordinates of the high density frontiers in a list
@@ -276,7 +276,7 @@ class ExplorationNode(Node):
 
         Args:
             frontier_map (list): 2D map of all frontiers
-            kernel (int, optional): size of the kernel to sum frontiers. Defaults to 12.
+            kernel (int, optional): size of the kernel to sum frontiers. Defaults to 3.
 
         Returns:
             list: list of tuple coordinates of highest density frontiers ranked by distance from robot
@@ -289,7 +289,8 @@ class ExplorationNode(Node):
         coordinate_density_distance_pairs = {}
         rows, cols = len(frontier_map), len(frontier_map[0])    
         top_coordinate_num = 3                                  
-        threshold = int(kernel*self.IS_FRONTIER_VALUE*0.5)            
+        threshold = int(kernel*kernel*self.IS_FRONTIER_VALUE*0.05) 
+        # threshold = 0           
         robot_position = self.robot_position_meters
         for row in range(rows):
             for col in range(cols):
