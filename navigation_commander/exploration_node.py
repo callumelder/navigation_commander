@@ -213,13 +213,13 @@ class ExplorationNode(Node):
         self.current_frame = self.br.imgmsg_to_cv2(data)
         output = self.get_id(self.current_frame, self.ARUCO_DICT[self.aruco_type])
         transform_matrix = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
-        bot_matrix = self.get_bot_matrix(self.currentPose.position.x,self.currentPose.position.y,0,self.quat)
-        tag_pos = self.transform_coordinates(transform_matrix, bot_matrix)
         # Print Aruco ID if it is in the frame
         if output != None:
             print(output)
         # Print Tag position if it is in the frame
         if transform_matrix != None:
+            bot_matrix = self.get_bot_matrix(self.currentPose.position.x,self.currentPose.position.y,0,self.quat)
+            tag_pos = self.transform_coordinates(transform_matrix, bot_matrix)
             print(tag_pos)
 
     def explore_map(self):
