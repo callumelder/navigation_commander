@@ -18,8 +18,6 @@ import threading
 from sensor_msgs.msg import Image # Image is the message type
 from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
 import cv2 as cv# OpenCV library
-import argparse
-import sys
 
 import matplotlib.pyplot as plt
 
@@ -126,6 +124,7 @@ class ExplorationNode(Node):
             self.image_callback,
             10
         )
+
         self.aruco_type = "DICT_6X6_100"
         self.arucoDict = cv.aruco.getPredefinedDictionary(self.ARUCO_DICT[self.aruco_type])
         self.arucoParams = cv.aruco.DetectorParameters()
@@ -207,8 +206,8 @@ class ExplorationNode(Node):
 
     def image_callback(self, data):
         """
-        gets the images from ROS -> converts it to OpenCV image then stores it in
-        self.current_frame variable
+        Gets the images from ROS -> converts it to OpenCV image then stores it in self.current_frame variable
+        this callback will print the ID of a detected aruco tag in the camera frame, and will print its position in the map on the terminal
         """
         self.current_frame = self.br.imgmsg_to_cv2(data)
         output = self.get_id(self.current_frame, self.ARUCO_DICT[self.aruco_type])
@@ -364,6 +363,10 @@ class ExplorationNode(Node):
         return top_coordinates
     
     def get_id(self,frame, aruco_dict_type):
+        """
+        Gets ID of any aruco tags in the frame that are in aruco_dict_type
+        Returns None if there are no tags detected in frame
+        """
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
         parameters = cv.aruco.DetectorParameters()
@@ -371,6 +374,10 @@ class ExplorationNode(Node):
         return ids
     
     def pose_estimation(self,frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
+        """
+        Analyses the input frame for Aruco tags, then outputs a transformation matrix from the tag to the camera viewing it.
+        Returns None if there are no tags detected in frame
+        """
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
         parameters = cv.aruco.DetectorParameters()
@@ -381,12 +388,16 @@ class ExplorationNode(Node):
                 #rvec and tvec most important 
                 #http://amroamroamro.github.io/mexopencv/matlab/cv.estimatePoseSingleMarkers.html
                 rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, cameraMatrix=matrix_coefficients,  distCoeffs=distortion_coefficients)
-                transformation_matrix = self.transformation_matrix(rvec, tvec)
+                trans_matrix = self.transformation_matrix(rvec, tvec)
         else:
-            transformation_matrix = None
-        return transformation_matrix
+            trans_matrix = None
+        return trans_matrix
     
     def transformation_matrix(self, rotation_vector, translation_vector):
+        """
+        Calculates a transformation matrix from a rotation and translation vector
+        There are 3 items in rotation_vector and translation_vector
+        """
         rotation = Rotation.from_rotvec(rotation_vector)
         transformation_matrix = np.eye(4)
         transformation_matrix[:3,:3] = rotation.as_matrix()
@@ -394,14 +405,22 @@ class ExplorationNode(Node):
         return transformation_matrix
     
     def transform_coordinates(self, tag_to_cam_matrix, robot_pose_matrix):
+        """
+        Calculates transformation matrix to get the position of the tag relative to the robot in the map's coordinate frame,
+        or whatever header frame is for the robot
+        """
         cam_to_bot_matrix = np.linalg.inv(robot_pose_matrix)
         tag_to_bot_matrix = np.dot(tag_to_cam_matrix, cam_to_bot_matrix)
         tag_position = tag_to_bot_matrix[:3, 3]
         return tag_position
     
     def get_bot_matrix(self, x,y,z, quaternion):
+        """
+        Calculates transform matrix of the robot based on its pose from PoseStamped
+        quaternion is an array of 4 items
+        """
         r = Rotation.from_quat([quaternion[0], quaternion[1],quaternion[2], quaternion[3]])
-        rotation_matrix = r.as_matrix
+        rotation_matrix = r.as_matrix()
         bot_pose_matrix = np.eye(4)
         bot_pose_matrix[:3,:3] = rotation_matrix
         bot_pose_matrix[0,3] = x
