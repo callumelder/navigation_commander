@@ -16,7 +16,7 @@ import numpy as np
 import threading
 from sensor_msgs.msg import Image # Image is the message type
 from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
-import cv2 # OpenCV library
+import cv2 as cv# OpenCV library
 import argparse
 import sys
 
@@ -113,21 +113,21 @@ class ExplorationNode(Node):
 
         self.br = CvBridge() # used to convert between ROS and OpenCV images
         self.ARUCO_DICT = {
-	        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
-	        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
-	        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
-	        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000
+	        "DICT_6X6_50": cv.aruco.DICT_6X6_50,
+	        "DICT_6X6_100": cv.aruco.DICT_6X6_100,
+	        "DICT_6X6_250": cv.aruco.DICT_6X6_250,
+	        "DICT_6X6_1000": cv.aruco.DICT_6X6_1000
         }
         #subscriber for images
         self.image_sub = self.create_subscription(
             Image,
-            'video_frames',
+            '/image',
             self.image_callback,
             10
         )
         self.aruco_type = "DICT_6X6_100"
-        self.arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[self.aruco_type])
-        self.arucoParams = cv2.aruco.DetectorParameters_create()
+        self.arucoDict = cv.aruco.getPredefinedDictionary(self.ARUCO_DICT[self.aruco_type])
+        self.arucoParams = cv.aruco.DetectorParameters()
         self.intrinsic_camera = np.array(((485.477854,0,320.632732),(0,488.026166,262.581355),(0,0,1)))
         self.distortion = np.array((0.160892,-0.243927,-0.000055,-0.000948,0))
 
@@ -211,6 +211,8 @@ class ExplorationNode(Node):
         self.current_frame variable
         """
         self.current_frame = self.br.imgmsg_to_cv2(data)
+        output = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
+        print(output)
 
 
     def explore_map(self):
@@ -267,9 +269,7 @@ class ExplorationNode(Node):
             max_coordinates = self.find_highest_frontier_density(self.frontier_map)
 
             #Camera
-            output = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
             # write location to map?
-            print(output)
 
             if (len(max_coordinates) == 0): #check to see if their are any more frontiers
                 self.get_logger().warning('No maximum density found; likely have completed mapping...')
@@ -357,18 +357,18 @@ class ExplorationNode(Node):
         return top_coordinates
     
     def pose_estimation(frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
-        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-        cv2.aruco_dict = cv2.aruco.Dictionary_get(aruco_dict_type)
-        parameters = cv2.aruco.DetectorParameters_create()
-        corners, ids, rejected = cv2.aruco.detectMarkers(gray, cv2.aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
+        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
+        parameters = cv.aruco.DetectorParameters()
+        corners, ids, rejected = cv.aruco.detectMarkers(gray, cv.aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
         
         if len(corners)>0:
             for i in range(0, len(ids)):
                 #rvec = rotation vector , tvec = translation vector , markerpoints for aruco detection
                 #rvec and tvec most important 
-                rvec,tvec,markerPoints = cv2.aruco.estimatePoseSingleMarkets(corners[i],0.02, matrix_coefficients, distortion_coefficients)
+                rvec,tvec,markerPoints = cv.aruco.estimatePoseSingleMarkers(corners[i],0.02, matrix_coefficients, distortion_coefficients)
             # here do we draw them? localise point in map idk
-        return frame
+        return 0
         
 
     def calc_dist(self, point1, point2):
