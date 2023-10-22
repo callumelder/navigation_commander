@@ -209,7 +209,8 @@ class ExplorationNode(Node):
         self.current_frame variable
         """
         self.current_frame = self.br.imgmsg_to_cv2(data)
-        output = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
+        output = self.get_id(self.current_frame, self.ARUCO_DICT[self.aruco_type])
+        # Print Aruco ID if it is in the frame
         if output != None:
             print(output)
 
@@ -355,6 +356,13 @@ class ExplorationNode(Node):
 
         return top_coordinates
     
+    def get_id(self,frame, aruco_dict_type):
+        gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
+        aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
+        parameters = cv.aruco.DetectorParameters()
+        corners, ids, rejected = cv.aruco.detectMarkers(gray, aruco_dict, parameters=parameters)
+        return ids
+    
     def pose_estimation(self,frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
         gray = cv.cvtColor(frame, cv.COLOR_BGR2GRAY)
         aruco_dict = cv.aruco.getPredefinedDictionary(aruco_dict_type)
@@ -369,7 +377,7 @@ class ExplorationNode(Node):
             # here do we draw them? localise point in map idk
         else:
             rvec, tvec, markerPoints = 0,0,0
-        return ids
+        return rvec, tvec
         
     # def check_aruco(self, data):
     #     """
