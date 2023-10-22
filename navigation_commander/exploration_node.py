@@ -4,13 +4,11 @@ from rclpy.node import Node
 from rclpy.executors import MultiThreadedExecutor
 from rclpy.qos import QoSProfile
 from rclpy.qos import QoSDurabilityPolicy, QoSHistoryPolicy, QoSReliabilityPolicy
-from math import sqrt, pow
 
 from nav_msgs.msg import OccupancyGrid
 from nav_msgs.msg import Odometry
 from geometry_msgs.msg import PoseStamped
 from nav2_msgs.msg import BehaviorTreeLog
-from nav_msgs.msg import Path
 
 import numpy as np
 import threading
@@ -26,16 +24,16 @@ class ExplorationNode(Node):
     """The ROS2 node responsible for exploring the map, by running an exploration algorithm
 
     Args:
-        Node (_type_): _description_
+        Node (Node): The ros2 exploration node used to explore the map by finding frontiers
     """
     def __init__(self):
         super().__init__(node_name='explorer')
 
         # variables
         self.IS_FRONTIER_VALUE = 101    #value to represent frontier as it will display red in rvis
-        self.IS_UNKNOWN_VALUE = -1      #value used by Nav2 to represent unknow cell
+        self.IS_UNKNOWN_VALUE = -1      #value used by Nav2 to represent unknown cells
         self.THRESHHOLD_VALUE = 99      #values above -1 and below this are counted as known free space by get_frontiers
-        self.RADIUS_THRESHHOLD = 1.5      #radius arround robot for frontiers to be excluded, in meters
+        self.RADIUS_THRESHHOLD = 1.5      #radius around robot for frontiers to be excluded, in meters
 
         self.dummy = None
 
@@ -47,18 +45,17 @@ class ExplorationNode(Node):
         self.x_2D = 0
         self.y_2D = 0
 
-        self.origin = [0, 0]    #initialise array for orgin of map in meters, published by info in costmap topic
+        self.origin = [0, 0]    
 
-        self.grid_data_1D = None    #initialise 1D array for data published by global costmap 
-        self.grid_data_2D = None    #initialise 2D array for above data to be shaped into costmap size
-        self.grid_data_2D_exists = False   #so we can check if the array has been filled, checking if == None dosen't work
-        self.frontier_map = np.zeros((self.width, self.height)) #initialise grid for frontiers to be added
+        self.grid_data_1D = None    
+        self.grid_data_2D = None   
+        self.frontier_map = np.zeros((self.width, self.height)) 
 
         self.last_coordinate = None
 
-        self.node_name = 'NavigateRecovery' # not sure, some kind of check to see if node as initialised
-        self.current_status = 'IDLE'        # gets status from Nav2 behaviour tree
-        self.currentPose = None             # store pose from pose Odom topic
+        self.node_name = 'NavigateRecovery' 
+        self.current_status = 'IDLE'        
+        self.currentPose = None             
 
         # subscribe to costmap, used to find frontiers
         self.costmap_subscription = self.create_subscription(
@@ -84,6 +81,7 @@ class ExplorationNode(Node):
             'goal_pose',
             10
         )
+
         # settings for pose Quality of service
         pose_qos = QoSProfile(
             durability = QoSDurabilityPolicy.VOLATILE,
@@ -91,6 +89,7 @@ class ExplorationNode(Node):
             history = QoSHistoryPolicy.KEEP_LAST,
             depth = 5
         )
+
         # subscribe to odom to get robots current position
         self.model_pose_sub = self.create_subscription(
             Odometry,
@@ -98,39 +97,33 @@ class ExplorationNode(Node):
             self.pose_callback,
             pose_qos
         )
-        # docs.ros2.org/foxy/api/nav_msgs/msg/Path.html
-        self.path_sub = self.create_subscription(
-            Path,
-            '/Path',
-            self.path_callback,
-            10
-        )
-        
 
 
     def global_costmap_callback(self, msg):
-        """_summary_
+        """The callback function of the global costmap, used to populate the 2D grid data array
+
+        Written by Isaac
 
         Args:
-            msg (_type_): _description_
+            msg (Global Costmap Message): The message data from the global costmap topic
         """
-        self.width = msg.info.width             #extracts width in grid points from costmap info data
-        self.height = msg.info.height           #extracts height in grid points from costmap info data
-        self.resolution = msg.info.resolution   #extracts grid resolution from costmap info data, default 0.05 m
+        self.width = msg.info.width             
+        self.height = msg.info.height           
+        self.resolution = msg.info.resolution   
 
         # Grab the origin from the costmap, in meters
         origin = msg.info.origin
         self.origin[0] = origin.position.x
         self.origin[1] = origin.position.y
 
-        self.grid_data_1D = list(msg.data)  #puts the data from the costmap into grid_data_1D
+        self.grid_data_1D = list(msg.data)  
 
-        x = np.linspace(0, 1, self.width)   #makes an array between 0 and 1 the the same number of eliments as width of map 
-        y = np.linspace(0, 1, self.height)  #makes an array between 0 and 1 the the same number of eliments as height of map
+        x = np.linspace(0, 1, self.width)   
+        y = np.linspace(0, 1, self.height) 
 
         # Update costmap coordinates using the origin information
         WIDTH = self.resolution*self.width      # width in meters
-        HEIGHT = self.resolution*self.height    # height im meters
+        HEIGHT = self.resolution*self.height    # height in meters
         x = (x)*WIDTH + self.origin[0]          # makes an array in meters of the x coordinates of the costmap
         y = (y)*HEIGHT + self.origin[1]         # makes an array in meters of the y coordinates of the costmap
 
@@ -138,44 +131,34 @@ class ExplorationNode(Node):
 
         # Convert 1D data into a grid, note: this is in grid reference, not meters
         self.grid_data_2D = np.reshape(self.grid_data_1D, (self.height, self.width))
-        self.grid_data_2D_exists = True # used to find out if robot gets to waypoint
 
         self.dummy = 1
 
     def bt_log_callback(self, msg:BehaviorTreeLog):
         """callback function for retrieving the behaviour tree information
 
+        Written by Callum
+
         Args:
-            msg (BehaviorTreeLog): the message from the behaviour log tree topic
+            msg (BehaviorTreeLog Message): the message from the behaviour log tree topic
         """
         latest_event = msg.event_log.pop(-1)
         self.node_name = latest_event.node_name
         self.current_status = latest_event.current_status
 
-    def pose_callback(self, msg):    #to get robots position in meters, for finding distance between it and frontiers
+    def pose_callback(self, msg):
         """gets current pose of robot - u can compare this to the goal pose u want to send
         pose is in header_frame_id <- should be 'map' here
         this is from odometry
 
+        Written by Jasmine
+
         Args:
-            msg (_type_): call back message of the pose
+            msg (Pose Message): call back message of the current pose of the robot
         """
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
     
-    def path_callback(self,data):
-        """
-        Uses the data from the path planner to determine what the "cost" (total distance) 
-        of the path that the bot is planning to take
-        """
-        for i in range(len(data.poses)-1):
-            x1 = data.poses[i].pose.position.x
-            y1 = data.poses[i].pose.position.y
-            x2 = data.poses[i+1].pose.position.x
-            y2 = data.poses[i+1].pose.position.y
-            distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
-            total_distance += distance
-        return total_distance
     
     def explore_map(self):
         """
@@ -276,7 +259,7 @@ class ExplorationNode(Node):
 
         Args:
             frontier_map (list): 2D map of all frontiers
-            kernel (int, optional): size of the kernel to sum frontiers. Defaults to 3.
+            kernel (int, optional): size of the kernel to sum frontiers. Defaults to 5.
 
         Returns:
             list: list of tuple coordinates of highest density frontiers ranked by distance from robot
@@ -291,12 +274,15 @@ class ExplorationNode(Node):
         top_coordinate_num = 3                                  
         threshold = int(kernel*kernel*self.IS_FRONTIER_VALUE*0.1)         
         robot_position = self.robot_position_meters
+        # iterate through frontier map, with stride of kernel size
         for row in range(0, rows, kernel):
             for col in range(0, cols, kernel):
                 try:
+                    # find highest density frontiers
                     sub_map = frontier_map[row-half_kernel:row+half_kernel, col-half_kernel:col+half_kernel]
                     density = np.sum(sub_map)
 
+                    # calculate distance and store values
                     if density > threshold:
                         distance = self.calc_dist([self.x_2D[row][col], self.y_2D[row][col]], robot_position)   
                         if distance < self.RADIUS_THRESHHOLD:   
@@ -318,6 +304,8 @@ class ExplorationNode(Node):
     def calc_dist(self, point1, point2):
         """calculates euclidean distance between two points represented by tuples in form (x,y)
 
+        Written by Jasmine
+
         Args:
             point1 (tuple): coordinate of first point
             point2 (tuple): coordinate of second point
@@ -330,7 +318,9 @@ class ExplorationNode(Node):
         return (dx**2+dy**2)**0.5
     
     def convert_to_waypoint(self, inspection_point):
-        """Converts frontier to waypoint
+        """Converts frontier coordinate to waypoint message structure
+
+        Written by Jasmine
 
         Args:
             inspection_point (tuple): coordinate of frontier
@@ -353,7 +343,7 @@ class ExplorationNode(Node):
         Written by Chen and Callum
 
         Args:
-            waypoint (_type_): _description_
+            waypoint (Waypoint Message): The current waypoint to be sent to the goal_pose topic
         """
         self.get_logger().info('Sending goal waypoint...')
         self.waypoint_publisher.publish(waypoint)
