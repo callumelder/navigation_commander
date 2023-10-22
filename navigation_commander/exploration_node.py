@@ -185,6 +185,7 @@ class ExplorationNode(Node):
             msg (PoseStamped): call back message of the pose
         """
         self.currentPose = msg.pose.pose
+        self.quat = [self.currentPose.orientation.x,self.currentPose.orientation.y,self.currentPose.orientation.z,self.currentPose.orientation.w]
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
     
     def path_callback(self,data):
@@ -212,7 +213,8 @@ class ExplorationNode(Node):
         self.current_frame = self.br.imgmsg_to_cv2(data)
         output = self.get_id(self.current_frame, self.ARUCO_DICT[self.aruco_type])
         transform_matrix = self.pose_estimation(self.current_frame, self.ARUCO_DICT[self.aruco_type], self.intrinsic_camera, self.distortion)
-        tag_pos = self.transform_coordinates(transform_matrix, [self.currentPose.position.x, self.currentPose.position.y, 0])
+        bot_matrix = self.get_bot_matrix(self.currentPose.position.x,self.currentPose.position.y,0,self.quat)
+        tag_pos = self.transform_coordinates(transform_matrix, bot_matrix)
         # Print Aruco ID if it is in the frame
         if output != None:
             print(output)
@@ -396,6 +398,16 @@ class ExplorationNode(Node):
         tag_to_bot_matrix = np.dot(tag_to_cam_matrix, cam_to_bot_matrix)
         tag_position = tag_to_bot_matrix[:3, 3]
         return tag_position
+    
+    def get_bot_matrix(self, x,y,z, quaternion):
+        r = Rotation.from_quat([quaternion[0], quaternion[1],quaternion[2], quaternion[3]])
+        rotation_matrix = r.as_matrix
+        bot_pose_matrix = np.eye(4)
+        bot_pose_matrix[:3,:3] = rotation_matrix
+        bot_pose_matrix[0,3] = x
+        bot_pose_matrix[1,3] = y
+        bot_pose_matrix[2,3] = z
+        return bot_pose_matrix
 
     def calc_dist(self, point1, point2):
         """calculates euclidean distance between two points represented by tuples in form (x,y)
