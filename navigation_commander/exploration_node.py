@@ -14,6 +14,11 @@ from nav_msgs.msg import Path
 
 import numpy as np
 import threading
+from sensor_msgs.msg import Image # Image is the message type
+from cv_bridge import CvBridge # Package to convert between ROS and OpenCV Images
+import cv2 # OpenCV library
+import argparse
+import sys
 
 import matplotlib.pyplot as plt
 
@@ -105,7 +110,32 @@ class ExplorationNode(Node):
             self.path_callback,
             10
         )
-        
+
+        self.br = CvBridge() # used to convert between ROS and OpenCV images
+        self.current_frame = None
+
+        self.ARUCO_DICT = {
+	        "DICT_6X6_50": cv2.aruco.DICT_6X6_50,
+	        "DICT_6X6_100": cv2.aruco.DICT_6X6_100,
+	        "DICT_6X6_250": cv2.aruco.DICT_6X6_250,
+	        "DICT_6X6_1000": cv2.aruco.DICT_6X6_1000
+        }
+        #subscriber for images
+        self.image_sub = self.create_subscription(
+            Image,
+            'video_frames',
+            self.image_callback,
+            10
+        )
+        self.aruco_type = "DICT_6X6_100"
+        self.arucoDict = cv2.aruco.Dictionary_get(self.ARUCO_DICT[self.aruco_type])
+        self.arucoParams = cv2.aruco.DetectorParameters_create()
+        self.intrinsic_camera = np.array(((485.477854,0,320.632732),(0,488.026166,262.581355),(0,0,1)))
+        self.distortion = np.array((0.160892,-0.243927,-0.000055,-0.000948,0))
+        cap = cv2.VideoCapture(0)
+        cap.set(cv2.CAP_PROP_FRAME_WIDTH,1280)
+        cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+
 
 
     def global_costmap_callback(self, msg):
@@ -158,7 +188,7 @@ class ExplorationNode(Node):
         this is from odometry
 
         Args:
-            msg (_type_): call back message of the pose
+            msg (PoseStamped): call back message of the pose
         """
         self.currentPose = msg.pose.pose
         self.robot_position_meters = [self.currentPose.position.x, self.currentPose.position.y]
@@ -167,6 +197,9 @@ class ExplorationNode(Node):
         """
         Uses the data from the path planner to determine what the "cost" (total distance) 
         of the path that the bot is planning to take
+
+        Args:
+            msg (Path): callback message of the pose
         """
         for i in range(len(data.poses)-1):
             x1 = data.poses[i].pose.position.x
@@ -176,7 +209,15 @@ class ExplorationNode(Node):
             distance = sqrt(pow(x2-x1,2)+pow(y2-y1,2))
             total_distance += distance
         return total_distance
-    
+
+    def image_callback(self, data):
+        """
+        gets the images from ROS -> converts it to OpenCV image then stores it in
+        self.current_frame variable
+        """
+        self.current_frame = self.br.imgmsg_to_cv2(data)
+
+
     def explore_map(self):
         """
         Primary loop for exploring the map. 
@@ -316,6 +357,21 @@ class ExplorationNode(Node):
 
         return top_coordinates
     
+    def pose_estimation(frame, aruco_dict_type, matrix_coefficients, distortion_coefficients):
+        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
+        cv2.aruco_dict = cv2.aruco.Dictionary_get(aruco_dict_type)
+        parameters = cv2.aruco.DetectorParameters_create()
+        corners, ids, rejected = cv2.aruco.detectMarkers(gray, cv2.aruco_dict, parameters=parameters, cameraMatrix = matrix_coefficients, distCoeff = distortion_coefficients)
+        
+        if len(corners)>0:
+            for i in range(0, len(ids)):
+                #rvec = rotation vector , tvec = translation vector , markerpoints for aruco detection
+                #rvec and tvec most important 
+                rvec,tvec,markerPoints = cv2.aruco.estimatePoseSingleMarkets(corners[i],0.02, matrix_coefficients, distortion_coefficients)
+            # here do we draw them? localise point in map idk
+        return frame
+        
+
     def calc_dist(self, point1, point2):
         """calculates euclidean distance between two points represented by tuples in form (x,y)
 
