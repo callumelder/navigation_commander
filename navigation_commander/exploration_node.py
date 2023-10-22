@@ -368,7 +368,7 @@ class ExplorationNode(Node):
             # here do we draw them? localise point in map idk
         else:
             rvec, tvec, markerPoints = 0,0,0
-        return rvec
+        return ids
         
     # def check_aruco(self, data):
     #     """
